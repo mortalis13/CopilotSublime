@@ -5,11 +5,11 @@ import sys
 import os
 import string
 
-cur_path = os.path.dirname(__file__)
-if cur_path not in sys.path:
-  sys.path.insert(0, cur_path)
+# cur_path = os.path.dirname(__file__)
+# if cur_path not in sys.path:
+#   sys.path.insert(0, cur_path)
 
-# from api import api
+# from .api import api
 
 
 # ------
@@ -118,11 +118,10 @@ def get_code(code: str, text: str, code_context: str, file: str, type: str = 'py
   sys_rules = [
     'The user needs help to write some new code.',
     'The user includes existing code and marks with $PLACEHOLDER$ where the new code should go.',
-    'DO NOT include the text "$PLACEHOLDER$" in your reply.',
-    'DO NOT repeat any code from the user in your reply.',
+    'Do not include the text "$PLACEHOLDER$" in your reply.',
   ]
   
-  request = f'<currentDocument> \nI have the following code in a file called `{file}`:\n```{type}\n{code_context}\n```\n \n</currentDocument>\n<userPrompt> \n{text}\n \n</userPrompt>\nThe code that would fit at $PLACEHOLDER$ without ``` is:'
+  request = f'<currentDocument> \nI have the following code in a file called `{file}`:\n```{type}\n{code_context}\n```\n \n</currentDocument>\n<userPrompt> \n{text}\n \n</userPrompt>\nDo not repeat the source code from the file in the response.\nThe code that would fit at $PLACEHOLDER$ without ``` is:'
   
   if code:
     sys_rules = [
@@ -133,10 +132,12 @@ def get_code(code: str, text: str, code_context: str, file: str, type: str = 'py
     request = f'<currentDocument> \nI have the following code in a file called `{file}`:\n```{type}\n{code_context}\n```\n<selection> \nThe $SELECTION_PLACEHOLDER$ code is:\n```{type}\n{code}\n``` \n</selection>\n \n</currentDocument>\n<userPrompt> \n{text}\n \n</userPrompt>\nThe modified $SELECTION_PLACEHOLDER$ code without ``` is:'
   
   sys_rules.extend([
-    'Do not include the resulting code in ``` blocks.',
-    'If new methods are added to the existing code, generate docstrings the methods.',
+    'Do not repeat the source code in your reply.',
+    'Do not indent the response.',
+    f'Respond with direct {type} code, without wrapping it with ``` blocks.',
+    'If new methods are added to the existing code, generate docstrings for the methods.',
   ])
-
+  
   messages = [
     {
       'role': 'system',

@@ -4,6 +4,8 @@ from sublime import Region
 import sys
 import os
 import string
+import logging
+import datetime
 
 # cur_path = os.path.dirname(__file__)
 # if cur_path not in sys.path:
@@ -21,147 +23,192 @@ import json
 import threading
 
 
-def _get_token() -> str:
-  print(f'>> copilot: token')
-  token_path = f'{os.path.dirname(os.path.realpath(__file__))}\\.copilot_token'
-  with open(token_path, 'r') as f:
-    access_token = f.read()
+class Copilot:
+  def __init__(self):
+    self.logger = logging.getLogger('copilot')
   
-  headers = {
-    'authorization': f'token {access_token}',
-    'editor-version': 'vscode/1.95.3',
-  }
-  url = 'https://api.github.com/copilot_internal/v2/token'
-  
-  response = requests.get(url, headers=headers)
-  token = response.json().get('token')
-  return token
-
-
-def _chat_completion(messages: list) -> str:
-  token = _get_token()
-  
-  headers = {
-    'authorization': f'Bearer {token}',
-    'editor-version': 'vscode/1.95.3',
-  }
-  
-  body = {
-    'messages': messages,
-    'model': 'gpt-4o',
-    'temperature': 0.1,
-    'n': 1
-  }
-  
-  url = 'https://api.githubcopilot.com/chat/completions'
-  print(f'>> copilot: {url}')
-  # print(body)
-  response = requests.post(url, headers=headers, json=body)
-  
-  if response.status_code > 300:
-    print(f'{response.status_code} :: {response.text}')
-    return None
-  
-  result = None
-  
-  choices = response.json().get('choices')
-  if choices:
-    try:
-      result = choices[0]['message']['content']
-    except KeyError:
-      pass
-  
-  return result
-
-  
-def get_docstring(code: str, file: str, include_code: bool = False) -> str:
-  file = '/' + os.path.normpath(file).replace('\\', '/') if file else 'untitled'
-  
-  messages = [
-    {
-      'role': 'user',
-      'content': f'I have the following code in the selection:\n```python\n# FILEPATH: {file}\n{code}\n```'
-    },
-    {
-      'role': 'system',
-      'content': f'When user asks you to document something, you must answer in the form of a python docstring only, without additional text and without the method signature. The response must contain all function arguments and return type. Don\'t use the ``` to delimit the code.'
-    },
-    {
-      'role': 'user',
-      'content': 'Please, generate docstring only. Do not repeat given code, only reply with docstring. docstring'
+  def _get_token(self) -> str:
+    self.logger.debug(f'get token')
+    token_path = f'{os.path.dirname(os.path.realpath(__file__))}\\.copilot_token'
+    with open(token_path, 'r') as f:
+      access_token = f.read()
+    
+    headers = {
+      'authorization': f'token {access_token}',
+      'editor-version': 'vscode/1.95.3',
     }
-  ]
-  
-  if include_code:
+    url = 'https://api.github.com/copilot_internal/v2/token'
+    
+    response = requests.get(url, headers=headers)
+    token = response.json().get('token')
+    return token
+
+
+  def _chat_completion(self, messages: list) -> str:
+    token = self._get_token()
+    
+    headers = {
+      'authorization': f'Bearer {token}',
+      'editor-version': 'vscode/1.95.3',
+    }
+    
+    body = {
+      'messages': messages,
+      'model': 'gpt-4o',
+      'temperature': 0.1,
+      'n': 1
+    }
+    
+    url = 'https://api.githubcopilot.com/chat/completions'
+    self.logger.info(url)
+    self.logger.debug(body['model'])
+    self.logger.debug(f'>> {body}')
+    response = requests.post(url, headers=headers, json=body)
+    
+    try:
+      self.logger.debug(f'<< {response.json()}')
+    except:
+      self.logger.debug(f'<< Raw text response: {response.text}')
+    
+    if response.status_code > 300:
+      self.logger.info(f'{response.status_code} :: {response.text}')
+      return None
+    
+    result = None
+    
+    choices = response.json().get('choices')
+    if choices:
+      try:
+        result = choices[0]['message']['content']
+      except KeyError:
+        pass
+    
+    self.logger.debug(f"'''''''''''''\n{result}\n'''''''''''''")
+    return result
+
+    
+  def get_docstring(self, code: str, file: str, include_code: bool = False) -> str:
+    file = '/' + os.path.normpath(file).replace('\\', '/') if file else 'untitled'
+    
     messages = [
       {
         'role': 'user',
-        'content': f'I have the following code in the selection:\n```{code}\n```'
+        'content': f'I have the following code in the selection:\n```python\n# FILEPATH: {file}\n{code}\n```'
       },
       {
         'role': 'system',
-        'content': 'When user asks you to document something, you must answer in the form of a python code block. Don\'t use the ``` to delimit the code.'
+        'content': f'When user asks you to document something, you must answer in the form of a python docstring only, without additional text and without the method signature. The response must contain all function arguments and return type. Don\'t use the ``` to delimit the code.'
       },
       {
         'role': 'user',
-        'content': 'Generate the docstring for the selected function.'
+        'content': 'Please, generate docstring only. Do not repeat given code, only reply with docstring. docstring'
       }
     ]
-  
-  return _chat_completion(messages)
+    
+    if include_code:
+      messages = [
+        {
+          'role': 'user',
+          'content': f'I have the following code in the selection:\n```{code}\n```'
+        },
+        {
+          'role': 'system',
+          'content': 'When user asks you to document something, you must answer in the form of a python code block. Don\'t use the ``` to delimit the code.'
+        },
+        {
+          'role': 'user',
+          'content': 'Generate the docstring for the selected function.'
+        }
+      ]
+    
+    return self._chat_completion(messages)
 
 
-def get_code(code: str, text: str, code_context: str, file: str, type: str = 'python') -> str:
-  file = '/' + os.path.normpath(file).replace('\\', '/') if file else 'untitled'
-  print(f'"{text}"')
-  
-  sys_rules = [
-    'The user needs help to write some new code.',
-    'The user includes existing code and marks with $PLACEHOLDER$ where the new code should go.',
-    'Do not include the text "$PLACEHOLDER$" in your reply.',
-  ]
-  
-  request = f'<currentDocument> \nI have the following code in a file called `{file}`:\n```{type}\n{code_context}\n```\n \n</currentDocument>\n<userPrompt> \n{text}\n \n</userPrompt>\nDo not repeat the source code from the file in the response.\nThe code that would fit at $PLACEHOLDER$ without ``` is:'
-  
-  if code:
+  def get_code(self, code: str, text: str, code_context: str, file: str, type: str = 'python') -> str:
+    file = '/' + os.path.normpath(file).replace('\\', '/') if file else 'untitled'
+    self.logger.info(f'code for "{text}"')
+    
     sys_rules = [
-      'The user needs help to modify some code.',
-      'The user includes existing code and marks with $SELECTION_PLACEHOLDER$ where the selected code should go.',
+      'The user needs help to write some new code.',
+      'The user includes existing code and marks with $PLACEHOLDER$ where the new code should go.',
+      'Do not include the text "$PLACEHOLDER$" in your reply.',
     ]
     
-    request = f'<currentDocument> \nI have the following code in a file called `{file}`:\n```{type}\n{code_context}\n```\n<selection> \nThe $SELECTION_PLACEHOLDER$ code is:\n```{type}\n{code}\n``` \n</selection>\n \n</currentDocument>\n<userPrompt> \n{text}\n \n</userPrompt>\nThe modified $SELECTION_PLACEHOLDER$ code without ``` is:'
-  
-  sys_rules.extend([
-    'Do not repeat the source code in your reply.',
-    'Do not indent the response.',
-    f'Respond with direct {type} code, without wrapping it with ``` blocks.',
-    'If new methods are added to the existing code, generate docstrings for the methods.',
-  ])
-  
-  messages = [
-    {
-      'role': 'system',
-      'content': '\n'.join(sys_rules)
-    },
-    {
-      'role': 'user',
-      'content': request
-    },
-  ]
-  
-  result = _chat_completion(messages)
-  return result
+    request = f'<currentDocument> \nI have the following code in a file called `{file}`:\n```{type}\n{code_context}\n```\n \n</currentDocument>\n<userPrompt> \n{text}\n \n</userPrompt>\nDo not repeat the source code from the file in the response.\nThe code that would fit at $PLACEHOLDER$ without ``` is:'
+    
+    if code:
+      sys_rules = [
+        'The user needs help to modify some code.',
+        'The user includes existing code and marks with $SELECTION_PLACEHOLDER$ where the selected code should go.',
+      ]
+      
+      request = f'<currentDocument> \nI have the following code in a file called `{file}`:\n```{type}\n{code_context}\n```\n<selection> \nThe $SELECTION_PLACEHOLDER$ code is:\n```{type}\n{code}\n``` \n</selection>\n \n</currentDocument>\n<userPrompt> \n{text}\n \n</userPrompt>\nThe modified $SELECTION_PLACEHOLDER$ code without ``` is:'
+    
+    sys_rules.extend([
+      'Do not repeat the source code in your reply.',
+      'Do not indent the response.',
+      f'Respond with direct {type} code, without wrapping it with ``` blocks.',
+      'If new methods are added to the existing code, generate docstrings for the methods.',
+    ])
+    
+    messages = [
+      {
+        'role': 'system',
+        'content': '\n'.join(sys_rules)
+      },
+      {
+        'role': 'user',
+        'content': request
+      },
+    ]
+    
+    return self._chat_completion(messages)
 
 
-def get_chat_response(text: str) -> str:
-  messages = [
-    {
-      'role': 'user',
-      'content': text
-    }
-  ]
-  return _chat_completion(messages)
+  def get_chat_response(self, text: str) -> str:
+    messages = [
+      {
+        'role': 'user',
+        'content': text
+      }
+    ]
+    return self._chat_completion(messages)
 # ------
+
+
+def config_logger():
+  logger = logging.getLogger('copilot')
+  logger.setLevel(logging.DEBUG)
+
+  handlers = [h.__class__ for h in logger.handlers]
+
+  if logging.StreamHandler not in handlers:
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_formatter = logging.Formatter('%(asctime)s [copilot] [%(levelname)s] %(message)s')
+    console_handler.setFormatter(console_formatter)
+    
+    logger.addHandler(console_handler)
+  
+  if logging.FileHandler not in handlers:
+    log_path = f'{os.path.dirname(os.path.realpath(__file__))}\\.copilot_{datetime.datetime.now().strftime("%Y%m%d")}.log'
+    file_handler = logging.FileHandler(log_path)
+    file_handler.setLevel(logging.DEBUG)
+    file_formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+    file_handler.setFormatter(file_formatter)
+    
+    logger.addHandler(file_handler)
+  
+  return logger
+
+
+def release_logger(logger):
+  for handler in logger.handlers:
+    if isinstance(handler, logging.FileHandler):
+      logger.removeHandler(handler)
+      handler.flush()
+      handler.close()
+      break
 
 
 class Parser:
@@ -228,6 +275,10 @@ class Parser:
 class Runner:
   def __init__(self, view):
     self.view = view
+    self.logger = config_logger()
+  
+  def __del__(self):
+    release_logger(self.logger)
   
   def doc_command(self):
     def run():
@@ -239,7 +290,7 @@ class Runner:
       is_selected = True if code.strip() else False
       
       if is_selected:
-        result = get_docstring(code, file, include_code=True)
+        result = Copilot().get_docstring(code, file, include_code=True)
       
       else:
         code_region = Parser(view).find_definition_bounds()
@@ -247,7 +298,7 @@ class Runner:
           return
         code = self.view.substr(code_region)
         
-        result = get_docstring(code, file)
+        result = Copilot().get_docstring(code, file)
         result = self._reindent(result)
       
       self._insert(result)
@@ -271,7 +322,7 @@ class Runner:
       else:
         code_context = file_text[:sel.a] + '$PLACEHOLDER$' + file_text[sel.a:]
       
-      result = get_code(code, text, code_context, file)
+      result = Copilot().get_code(code, text, code_context, file)
       if not is_selected:
         result = self._reindent(result)
       
@@ -287,7 +338,7 @@ class Runner:
       view = self.view
       
       text = view.substr(Region(0, view.size()))
-      result = get_chat_response(text)
+      result = Copilot().get_chat_response(text)
       
       pos = view.line(Region(0, 0)).b
       

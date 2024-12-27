@@ -1,0 +1,13 @@
+[
+  {
+    "keys": ["up"], "context": [{ "key": "setting.isCopilotPanel", "operator": "equal", "operand": true }],
+    "command": "get_copilot_history_entry",
+    "args": { "up": true }
+  },
+
+  {
+    "keys": ["down"], "context": [{ "key": "setting.isCopilotPanel", "operator": "equal", "operand": true }],
+    "command": "get_copilot_history_entry",
+    "args": { "up": false }
+  },
+]

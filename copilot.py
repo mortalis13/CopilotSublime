@@ -1,5 +1,5 @@
 import sublime_plugin
-from sublime import Region
+from sublime import Region, Edit
 
 import sys
 import os
@@ -11,6 +11,7 @@ if cur_path not in sys.path:
 
 # from api import api
 from code_parser import Parser
+from history import HistoryManager
 import config
 
 
@@ -211,6 +212,8 @@ class Runner:
   def inline_code_command(self):
     view = self.view
     
+    HistoryManager.reset_index()
+    
     def run(text: str):
       sel = view.sel()[0]
       code = view.substr(sel)
@@ -232,9 +235,11 @@ class Runner:
       self._insert(result)
       
     def on_panel(text: str):
+      HistoryManager.add(text)
       threading.Thread(target=run, args=(text,)).start()
     
-    view.window().show_input_panel('Copilot Request:', '', on_panel, None, None)
+    input_view = view.window().show_input_panel('Copilot Request: ', '', on_panel, None, None)
+    input_view.settings().set('isCopilotPanel', True)
 
   def chat_command(self):
     def run():
@@ -287,3 +292,18 @@ class CopilotChatCommand(sublime_plugin.TextCommand):
   def run(self, edit):
     self.view.set_syntax_file('Packages/Markdown/Markdown.sublime-syntax')
     Runner(self.view).chat_command()
+
+
+class GetCopilotHistoryEntryCommand(sublime_plugin.TextCommand):
+  # Command for input panel view
+  def run(self, edit: Edit, up: bool):
+    if up:
+      entry = HistoryManager.prev()
+    else:
+      entry = HistoryManager.next()
+    
+    if entry is None:
+      entry = self.view.substr(Region(0, self.view.size()))
+    
+    self.view.erase(edit, Region(0, self.view.size()))
+    self.view.insert(edit, 0, entry)

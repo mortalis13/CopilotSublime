@@ -4,6 +4,7 @@ from sublime import Region, Edit
 import sys
 import os
 import logging
+import time
 
 cur_path = os.path.dirname(__file__)
 if cur_path not in sys.path:
@@ -61,18 +62,20 @@ class Copilot:
     
     url = 'https://api.githubcopilot.com/chat/completions'
     self.logger.info(url)
-    self.logger.debug(body['model'])
+    self.logger.debug(f">> {body['model']}")
     self.logger.debug(f'>> {body}')
     response = requests.post(url, headers=headers, json=body)
     
     try:
       self.logger.debug(f'<< {response.json()}')
+      self.logger.debug(f"<< {response.json()['model']}")
     except:
       self.logger.debug(f'<< Raw text response: {response.text}')
     
     if response.status_code > 300:
-      self.logger.info(f'{response.status_code} :: {response.text}')
-      return None
+      error = f'{response.status_code} :: {response.text}'
+      self.logger.error(error)
+      raise Exception(error)
     
     result = None
     
@@ -126,7 +129,7 @@ class Copilot:
 
   def get_code(self, code: str, text: str, code_context: str, file: str, type: str = 'python') -> str:
     file = '/' + os.path.normpath(file).replace('\\', '/') if file else 'untitled'
-    self.logger.info(f'code for "{text}"')
+    self.logger.info(f'>> "{text}"')
     
     sys_rules = [
       'The user needs help to write some new code.',
@@ -180,6 +183,9 @@ class Runner:
   def __init__(self, view):
     self.view = view
     self.logger = config.config_logger()
+    self.loading = False
+    self.loader_text = ''
+    self.error = ''
   
   def __del__(self):
     config.release_logger(self.logger)
@@ -205,8 +211,10 @@ class Runner:
         result = Copilot().get_docstring(code, file)
         result = self._reindent(result)
       
+      self.loading = False
       self._insert(result)
       
+    threading.Thread(target=self._loader).start()
     threading.Thread(target=run).start()
 
   def inline_code_command(self):
@@ -228,14 +236,23 @@ class Runner:
       else:
         code_context = file_text[:sel.a] + '$PLACEHOLDER$' + file_text[sel.a:]
       
-      result = Copilot().get_code(code, text, code_context, file)
+      try:
+        result = Copilot().get_code(code, text, code_context, file)
+      
+      except Exception as ex:
+        self.logger.exception(ex)
+        self.error = 'Error getting code completion'
+        return
+
       if not is_selected:
         result = self._reindent(result)
       
+      self.loading = False
       self._insert(result)
       
     def on_panel(text: str):
       HistoryManager.add(text)
+      threading.Thread(target=self._loader).start()
       threading.Thread(target=run, args=(text,)).start()
     
     input_view = view.window().show_input_panel('Copilot Request: ', '', on_panel, None, None)
@@ -244,17 +261,26 @@ class Runner:
   def chat_command(self):
     def run():
       view = self.view
+      view.set_syntax_file('Packages/Markdown/Markdown.sublime-syntax')
       
       text = view.substr(Region(0, view.size()))
-      result = Copilot().get_chat_response(text)
+      try:
+        result = Copilot().get_chat_response(text)
+      
+      except Exception as ex:
+        self.logger.exception(ex)
+        self.error = 'Error getting chat response'
+        return
       
       pos = view.line(Region(0, 0)).b
       
       view.sel().clear()
       view.sel().add(view.size())
       
+      self.loading = False
       self._insert(result, wrap=('\n\n-------------\n', '\n'))
-      
+    
+    threading.Thread(target=self._loader).start()
     threading.Thread(target=run).start()
   
   def _reindent(self, text: str) -> str:
@@ -276,6 +302,33 @@ class Runner:
       view.run_command('insert', {'characters': wrap[1]})
     
     view.settings().set('auto_indent', auto_indent)
+  
+  def _loader(self):
+    self.loading = True
+  
+    while self.loading:
+      if self.error:
+        self.view.update_popup(self.error)
+        return
+        
+      self.loader_text += '.'
+      if len(self.loader_text) > 3:
+        self.loader_text = ''
+      
+      text = self.loader_text
+      if len(text) < 3:
+        text += (3 - len(text)) * ' '
+      
+      text = text.replace(' ', '&nbsp;')
+      
+      if not self.view.is_popup_visible():
+        self.view.show_popup(text)
+      else:
+        self.view.update_popup(text)
+      
+      time.sleep(0.2)
+
+    self.view.hide_popup()
 
 
 class CopilotInlineCommand(sublime_plugin.TextCommand):
@@ -290,7 +343,6 @@ class CopilotDocCommand(sublime_plugin.TextCommand):
 
 class CopilotChatCommand(sublime_plugin.TextCommand):
   def run(self, edit):
-    self.view.set_syntax_file('Packages/Markdown/Markdown.sublime-syntax')
     Runner(self.view).chat_command()
 
 

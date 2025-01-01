@@ -5,6 +5,7 @@ import sys
 import os
 import logging
 import time
+from textwrap import indent, dedent
 
 cur_path = os.path.dirname(__file__)
 if cur_path not in sys.path:
@@ -128,31 +129,38 @@ class Copilot:
 
 
   def get_code(self, code: str, text: str, code_context: str, file: str, type: str = 'python') -> str:
-    file = '/' + os.path.normpath(file).replace('\\', '/') if file else 'untitled'
     self.logger.info(f'>> "{text}"')
+    file = '/' + os.path.normpath(file).replace('\\', '/') if file else 'untitled'
     
-    sys_rules = [
-      'The user needs help to write some new code.',
-      'The user includes existing code and marks with $PLACEHOLDER$ where the new code should go.',
-      'Do not include the text "$PLACEHOLDER$" in your reply.',
-    ]
-    
-    request = f'<currentDocument> \nI have the following code in a file called `{file}`:\n```{type}\n{code_context}\n```\n \n</currentDocument>\n<userPrompt> \n{text}\n \n</userPrompt>\nDo not repeat the source code from the file in the response.\nThe code that would fit at $PLACEHOLDER$ without ``` is:'
-    
+    # Rules for selected code
     if code:
       sys_rules = [
         'The user needs help to modify some code.',
         'The user includes existing code and marks with $SELECTION_PLACEHOLDER$ where the selected code should go.',
       ]
-      
       request = f'<currentDocument> \nI have the following code in a file called `{file}`:\n```{type}\n{code_context}\n```\n<selection> \nThe $SELECTION_PLACEHOLDER$ code is:\n```{type}\n{code}\n``` \n</selection>\n \n</currentDocument>\n<userPrompt> \n{text}\n \n</userPrompt>\nThe modified $SELECTION_PLACEHOLDER$ code without ``` is:'
     
+    else:
+      sys_rules = [
+        'The user needs help to write some new code.',
+        'The user includes existing code and marks with $PLACEHOLDER$ where the new code should go.',
+        'Do not include the text "$PLACEHOLDER$" in your reply.',
+      ]
+      request = f'<currentDocument> \nI have the following code in a file called `{file}`:\n```{type}\n{code_context}\n```\n \n</currentDocument>\n<userPrompt> \n{text}\n \n</userPrompt>\nDo not repeat the source code from the file in the response.\nThe code that would fit at $PLACEHOLDER$ without ``` is:'
+
+    # Common rules
     sys_rules.extend([
-      'Do not repeat the source code in your reply.',
-      'Do not indent the response.',
+      'Generate docstrings for added methods.',
+      'Do not repeat the provided code in your reply.',
       f'Respond with direct {type} code, without wrapping it with ``` blocks.',
-      'If new methods are added to the existing code, generate docstrings for the methods.',
     ])
+    
+    if type == 'python':
+      sys_rules.extend([
+        'If docstring is requested, do not repeat given code, only reply with docstring wrapped in """.',
+        'Always add type hints to the methods signatures using Python 3.10 built-in types rather that the typing library.',
+        'Use single quotes for strings.'
+      ])
     
     messages = [
       {
@@ -244,8 +252,7 @@ class Runner:
         self.error = 'Error getting code completion'
         return
 
-      if not is_selected:
-        result = self._reindent(result)
+      result = self._reindent(result)
       
       self.loading = False
       self._insert(result)
@@ -286,8 +293,39 @@ class Runner:
   def _reindent(self, text: str) -> str:
     view = self.view
     sel = view.sel()[0]
-    indent = (sel.a - view.line(sel).a) * ' '
-    text = re.sub(r'( *\n)', rf'\1{indent}', text)
+    
+    start = min(sel.a, sel.b)
+    
+    # Detect selection indentation
+    sel_indent = 0
+    
+    line = view.substr(view.line(start))
+    if line.startswith(' '):
+      match = re.match(r' *', line)
+      sel_indent = len(match.group(0))
+    
+    # Detect text indentation
+    text_indent = 0
+    
+    lines = text.split('\n')
+    for line in lines:
+      if not line.lstrip(): continue
+      text_indent = len(line) - len(line.lstrip())
+      break
+    
+    # Fix indentation
+    fix_indent = sel_indent - text_indent
+    if fix_indent > 0:
+      text = indent(text, fix_indent * ' ')
+    
+    elif fix_indent < 0:
+      text = dedent(text)
+      text = indent(text, abs(fix_indent) * ' ')
+    
+    # Remove first line indent if selection is empty or its start is not on the line start
+    if start != view.line(start).a:
+      text = text.lstrip()
+    
     return text
   
   def _insert(self, text, wrap=None):

@@ -25,6 +25,10 @@ import json
 import threading
 
 
+ASSISTANT_START = '[[ ASSISTANT ]]'
+ASSISTANT_END = '[[ #ASSISTANT ]]'
+
+
 class Copilot:
   def __init__(self):
     self.logger = logging.getLogger('copilot')
@@ -64,12 +68,13 @@ class Copilot:
     url = 'https://api.githubcopilot.com/chat/completions'
     self.logger.info(url)
     self.logger.debug(f">> {body['model']}")
-    self.logger.debug(f'>> {body}')
+    self.logger.debug(f'>> {json.dumps(body)}')
     response = requests.post(url, headers=headers, json=body)
     
     try:
-      self.logger.debug(f'<< {response.json()}')
-      self.logger.debug(f"<< {response.json()['model']}")
+      data = response.json()
+      self.logger.debug(f'<< {json.dumps(data)}')
+      self.logger.debug(f"<< {data['model']}")
     except:
       self.logger.debug(f'<< Raw text response: {response.text}')
     
@@ -79,11 +84,9 @@ class Copilot:
       raise Exception(error)
     
     result = None
-    
-    choices = response.json().get('choices')
-    if choices:
+    if data.get('choices'):
       try:
-        result = choices[0]['message']['content']
+        result = data['choices'][0]['message']['content']
       except KeyError:
         pass
     
@@ -91,43 +94,6 @@ class Copilot:
     return result
 
     
-  def get_docstring(self, code: str, file: str, include_code: bool = False) -> str:
-    file = '/' + os.path.normpath(file).replace('\\', '/') if file else 'untitled'
-    
-    messages = [
-      {
-        'role': 'user',
-        'content': f'I have the following code in the selection:\n```python\n# FILEPATH: {file}\n{code}\n```'
-      },
-      {
-        'role': 'system',
-        'content': f'When user asks you to document something, you must answer in the form of a python docstring only, without additional text and without the method signature. The response must contain all function arguments and return type. Don\'t use the ``` to delimit the code.'
-      },
-      {
-        'role': 'user',
-        'content': 'Please, generate docstring only. Do not repeat given code, only reply with docstring. docstring'
-      }
-    ]
-    
-    if include_code:
-      messages = [
-        {
-          'role': 'user',
-          'content': f'I have the following code in the selection:\n```{code}\n```'
-        },
-        {
-          'role': 'system',
-          'content': 'When user asks you to document something, you must answer in the form of a python code block. Don\'t use the ``` to delimit the code.'
-        },
-        {
-          'role': 'user',
-          'content': 'Generate the docstring for the selected function.'
-        }
-      ]
-    
-    return self._chat_completion(messages)
-
-
   def get_code(self, code: str, text: str, code_context: str, file: str, type: str = 'python') -> str:
     self.logger.info(f'>> "{text}"')
     file = '/' + os.path.normpath(file).replace('\\', '/') if file else 'untitled'
@@ -177,13 +143,55 @@ class Copilot:
 
 
   def get_chat_response(self, text: str) -> str:
-    messages = [
-      {
-        'role': 'user',
-        'content': text
-      }
-    ]
-    return self._chat_completion(messages)
+    """
+    Chat flow includes a chain of pairs of user request and assistant response delimited by defined strings
+    Each consecutive user request is sent with the current context in the form of all previous request/response pairs
+    Example of chat flow (each real sequence is separated visually with multiple new lines):
+    [user request 1]
+    [[ ASSISTANT ]]
+    [response 1]
+    [[ #ASSISTANT ]]
+    [user request 2]
+    [[ ASSISTANT ]]
+    [response 2]
+    [[ #ASSISTANT ]]
+    """
+    messages = self._parse_chat_input(text)
+    result = self._chat_completion(messages)
+    result = f'{ASSISTANT_START}\n{result}\n{ASSISTANT_END}'
+    return result
+  
+  def _parse_chat_input(self, text: str) -> str:
+    messages = []
+    content = ''
+    
+    lines = text.split('\n')
+    total = len(lines)
+    for i in range(total):
+      line = lines[i]
+
+      if line == ASSISTANT_START:
+        current_role = 'user'
+      if line == ASSISTANT_END:
+        current_role = 'assistant'
+      
+      if line in [ASSISTANT_START, ASSISTANT_END]:
+        messages.append({
+          'role': current_role,
+          'content': content.strip()
+        })
+        content = ''
+        continue
+      
+      content += line + '\n'
+
+      if i == total - 1 and content.strip():
+          messages.append({
+            'role': 'user',
+            'content': content.strip()
+          })
+    
+    return messages
 # ------
 
 
@@ -198,33 +206,6 @@ class Runner:
   def __del__(self):
     config.release_logger(self.logger)
   
-  def doc_command(self):
-    def run():
-      view = self.view
-      sel = view.sel()[0]
-      code = view.substr(sel)
-      file = view.file_name()
-      
-      is_selected = True if code.strip() else False
-      
-      if is_selected:
-        result = Copilot().get_docstring(code, file, include_code=True)
-      
-      else:
-        code_region = Parser(view).find_definition_bounds()
-        if not code_region:
-          return
-        code = self.view.substr(code_region)
-        
-        result = Copilot().get_docstring(code, file)
-        result = self._reindent(result)
-      
-      self.loading = False
-      self._insert(result)
-      
-    threading.Thread(target=self._loader).start()
-    threading.Thread(target=run).start()
-
   def inline_code_command(self):
     view = self.view
     
@@ -285,7 +266,9 @@ class Runner:
       view.sel().add(view.size())
       
       self.loading = False
-      self._insert(result, wrap=('\n\n-------------\n', '\n'))
+      self._insert('\n\n\n')
+      self._insert(result)
+      self._insert('\n\n\n')
     
     threading.Thread(target=self._loader).start()
     threading.Thread(target=run).start()
@@ -328,18 +311,11 @@ class Runner:
     
     return text
   
-  def _insert(self, text, wrap=None):
-    view = self.view
-    auto_indent = view.settings().get('auto_indent')
-    view.settings().set('auto_indent', False)
-    
-    if wrap:
-      view.run_command('insert', {'characters': wrap[0]})
-    view.run_command('insert', {'characters': text})
-    if wrap:
-      view.run_command('insert', {'characters': wrap[1]})
-    
-    view.settings().set('auto_indent', auto_indent)
+  def _insert(self, text):
+    auto_indent = self.view.settings().get('auto_indent')
+    self.view.settings().set('auto_indent', False)
+    self.view.run_command('insert', {'characters': text})
+    self.view.settings().set('auto_indent', auto_indent)
   
   def _loader(self):
     self.loading = True
@@ -374,15 +350,10 @@ class CopilotInlineCommand(sublime_plugin.TextCommand):
     Runner(self.view).inline_code_command()
 
 
-class CopilotDocCommand(sublime_plugin.TextCommand):
-  def run(self, edit):
-    Runner(self.view).doc_command()
-
-
 class CopilotChatCommand(sublime_plugin.TextCommand):
   def run(self, edit):
     Runner(self.view).chat_command()
-
+  
 
 class GetCopilotHistoryEntryCommand(sublime_plugin.TextCommand):
   # Command for input panel view

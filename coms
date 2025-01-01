@@ -15,3 +15,8 @@ view.word(sel)
 view.show_popup('.....')
 view.update_popup('abc')
 view.hide_popup()
+
+v = view.window().new_file()
+v.settings().set('auto_indent', False)
+v.run_command('insert', {'characters': text})
+v.settings().set('auto_indent', True)

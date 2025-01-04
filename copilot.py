@@ -98,7 +98,6 @@ class Copilot:
 
     
   def get_code(self, code: str, text: str, code_context: str, file: str, type: str = 'python') -> str:
-    self.logger.info(f'>> "{text}"')
     file = '/' + os.path.normpath(file).replace('\\', '/') if file else 'untitled'
     
     # Rules for selected code
@@ -159,7 +158,7 @@ class Copilot:
     [response 2]
     [[ #ASSISTANT ]]
     """
-    messages = self._parse_chat_input(text)
+    messages = self._parse_chat_input(text.strip())
     result = self._chat_completion(messages)
     result = f'{ASSISTANT_START}\n{result}\n{ASSISTANT_END}'
     return result
@@ -167,7 +166,7 @@ class Copilot:
   
   def get_context_chat_response(self, context: str, text: str, file: str, line_start: int, line_end: int, type: str = 'python') -> str:
     file = os.path.basename(file) if file else 'untitled'
-    messages = self._parse_chat_input(text)
+    messages = self._parse_chat_input(text.strip())
     if messages:
       messages.insert(-1, {
         'role': 'user',
@@ -258,6 +257,7 @@ class Runner:
       self._insert(result)
       
     def on_panel(text: str):
+      self.logger.info(f'>> "{text}"')
       HistoryManager.add(text, history_key)
       threading.Thread(target=self._loader).start()
       threading.Thread(target=run, args=(text,)).start()
@@ -324,6 +324,7 @@ class Runner:
       chat_view.show(response_pos)
       
     def on_panel(text: str):
+      self.logger.info(f'>> "{text}"')
       HistoryManager.add(text, history_key)
       threading.Thread(target=self._loader).start()
       threading.Thread(target=run, args=(text,)).start()
@@ -334,10 +335,10 @@ class Runner:
 
 
   def chat_command(self):
+    view = self.view
+    view.assign_syntax('Packages/Markdown/Markdown.sublime-syntax')
+    
     def run():
-      view = self.view
-      view.assign_syntax('Packages/Markdown/Markdown.sublime-syntax')
-      
       chat_text = view.substr(Region(0, view.size()))
       try:
         result = Copilot().get_chat_response(chat_text)
@@ -347,13 +348,13 @@ class Runner:
         self.error = 'Error getting chat response'
         return
       
-      pos = view.line(Region(0, 0)).b
-      
-      view.sel().clear()
-      view.sel().add(view.size())
-      
       self.loading = False
-      self._insert(f'\n\n\n{result}\n\n\n')
+      self._insert(f'\n\n\n{result}\n\n\n', end=True)
+      
+      response_pos = len(chat_text) + 1
+      view.sel().clear()
+      view.sel().add(response_pos)
+      view.show(response_pos)
     
     threading.Thread(target=self._loader).start()
     threading.Thread(target=run).start()

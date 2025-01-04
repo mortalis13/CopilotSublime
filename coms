@@ -20,3 +20,7 @@ v = view.window().new_file()
 v.settings().set('auto_indent', False)
 v.run_command('insert', {'characters': text})
 v.settings().set('auto_indent', True)
+
+sublime.log_commands(True)
+
+view.show(0)

@@ -167,6 +167,8 @@ class Runner:
   def chat_command(self):
     view = self.view
     view.assign_syntax('Packages/Markdown/Markdown.sublime-syntax')
+    view.set_scratch(True)
+    view.set_name('Copilot Chat')
     
     def run():
       chat_text = view.substr(Region(0, view.size()))
@@ -193,7 +195,7 @@ class Runner:
   def _create_chat_view(self):
     chat_view = self.window.new_file(syntax='Packages/Markdown/Markdown.sublime-syntax')
     chat_view.set_scratch(True)
-    chat_view.set_name('Copilot Chat')
+    chat_view.set_name('Copilot Context Chat')
     self.window.settings().set(SETTING_CHAT_VIEW_ID, chat_view.id())
     
     return chat_view

@@ -18,7 +18,11 @@ def config_logger():
     logger.addHandler(console_handler)
   
   if logging.FileHandler not in handlers:
-    log_path = f'{os.path.dirname(os.path.realpath(__file__))}\\.copilot_{datetime.datetime.now().strftime("%Y%m%d")}.log'
+    logs_path = os.path.dirname(os.path.realpath(__file__)) + '/logs'
+    if not os.path.exists(logs_path):
+      os.makedirs(logs_path)
+    
+    log_path = f'{logs_path}/.copilot_{datetime.datetime.now().strftime("%Y%m%d")}.log'
     file_handler = logging.FileHandler(log_path, encoding='utf8')
     file_handler.setLevel(logging.DEBUG)
     file_formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')

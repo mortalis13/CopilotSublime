@@ -16,7 +16,7 @@ if cur_path not in sys.path:
 
 import config
 
-from copilot_api import Copilot
+from copilot_api import Copilot, SELECTED_CODE_PLACEHOLDER, INSERT_PLACEHOLDER
 from code_parser import Parser
 from history import HistoryManager
 
@@ -40,6 +40,10 @@ LOADER_STYLE = '''
 </style>
 '''
 
+# -----------
+
+# -----------
+
 
 class Runner:
   def __init__(self, view):
@@ -53,7 +57,7 @@ class Runner:
   def __del__(self):
     config.release_logger(self.logger)
   
-  def inline_code_command(self):
+  def inline_code_command(self) -> None:
     view = self.view
     
     history_key = 'inline_code_command'
@@ -63,24 +67,30 @@ class Runner:
       sel = view.sel()[0]
       code = view.substr(sel)
       file = view.file_name()
+      indent = view.settings().get('tab_size')
+      
+      type = self._detect_code_type()
+      self.logger.debug(f'code type: {type}')
       
       is_selected = True if code.strip() else False
       
-      file_text = view.substr(Region(0, view.size()))
+      file_text = view.substr(Region(0, view.size())).strip()
       
+      code_context = ''
       if is_selected:
-        code_context = file_text[:sel.a] + '$SELECTION_PLACEHOLDER$' + file_text[sel.b:]
-      else:
-        code_context = file_text[:sel.a] + '$PLACEHOLDER$' + file_text[sel.a:]
+        code_context = file_text[:sel.a] + SELECTED_CODE_PLACEHOLDER + file_text[sel.b:]
+      elif file_text:
+        code_context = file_text[:sel.a] + INSERT_PLACEHOLDER + file_text[sel.a:]
       
       try:
-        result = Copilot().get_code(code, text, code_context, file)
+        result = Copilot().get_code(code, text, code_context, file, type, indent)
       
       except Exception as ex:
         self.logger.exception(ex)
-        self.error = 'Error getting code completion'
+        self.error = 'Error getting code completion, check the logs'
         return
 
+      result = self._extract_code(result)
       result = self._reindent(result)
       
       self.loading = False
@@ -97,7 +107,7 @@ class Runner:
     self.window.settings().set('panelHistoryKey', history_key)
 
 
-  def context_chat_command(self):
+  def context_chat_command(self) -> None:
     view = self.view
     
     history_key = 'context_chat_command'
@@ -131,7 +141,7 @@ class Runner:
       
       except Exception as ex:
         self.logger.exception(ex)
-        self.error = 'Error getting chat response'
+        self.error = 'Error getting chat response, check the logs'
         return
 
       self._split_view()
@@ -164,7 +174,7 @@ class Runner:
     self.window.settings().set('panelHistoryKey', history_key)
 
 
-  def chat_command(self):
+  def chat_command(self) -> None:
     view = self.view
     view.assign_syntax('Packages/Markdown/Markdown.sublime-syntax')
     view.set_scratch(True)
@@ -177,7 +187,7 @@ class Runner:
       
       except Exception as ex:
         self.logger.exception(ex)
-        self.error = 'Error getting chat response'
+        self.error = 'Error getting chat response, check the logs'
         return
       
       self.loading = False
@@ -192,18 +202,91 @@ class Runner:
     threading.Thread(target=run).start()
 
   
-  def _create_chat_view(self):
+  def _create_chat_view(self) -> View:
     chat_view = self.window.new_file(syntax='Packages/Markdown/Markdown.sublime-syntax')
     chat_view.set_scratch(True)
     chat_view.set_name('Copilot Context Chat')
     self.window.settings().set(SETTING_CHAT_VIEW_ID, chat_view.id())
-    
     return chat_view
   
-  def _split_view(self):
+  def _split_view(self) -> None:
     if self.window.num_groups() == 1:
       self.window.set_layout({'cells': [[0, 0, 1, 1], [1, 0, 2, 1]], 'cols': [0.0, 0.5, 1.0], 'rows': [0.0, 1.0]})
   
+  def _detect_code_type(self) -> str:
+    type = None
+    view_scope = self.view.syntax().scope.lower()
+    
+    scopes = {
+      'source.actionscript': 'as',
+      'source.applescript': 'applescript',
+      'source.asp': 'asp',
+      'source.c++': 'cpp',
+      'source.clojure': 'clojure',
+      'source.cmake': 'cmake',
+      'source.css': 'css',
+      'source.diff': 'diff',
+      'source.dosbatch': 'bat',
+      'source.erlang': 'erlang',
+      'source.groovy': 'groovy',
+      'source.haskell': 'haskell',
+      'source.java': 'java',
+      'source.json': 'json',
+      'source.jsx': 'jsx',
+      'source.kotlin': 'kotlin',
+      'source.lisp': 'lisp',
+      'source.lua': 'lua',
+      'source.makefile': 'make',
+      'source.matlab': 'matlab',
+      'source.objc++': 'objectivecpp',
+      'source.ocaml': 'ocaml',
+      'source.pascal': 'pascal',
+      'source.perl': 'perl',
+      'source.python': 'python',
+      'source.ruby': 'ruby',
+      'source.rust': 'rust',
+      'source.scala': 'scala',
+      'source.shell.bash': 'bash',
+      'source.sql': 'sql',
+      'source.ts': 'typescript',
+      'source.vbs': 'vbs',
+      'source.yaml': 'yaml',
+      
+      'text.haml': 'haml',
+      'text.html.basic': 'html',
+      'text.html.jsp': 'jsp',
+      'text.html.markdown': 'markdown',
+      'text.html.vue': 'vue',
+
+      'source.d': 'd',
+      'source.cs': 'csharp',
+      'source.c': 'c',
+      'source.go': 'go',
+      'source.js': 'javascript',
+      'source.objc': 'objectivec',
+      'source.r': 'r',
+      'text.xml': 'xml',
+      'text.html': 'html',
+      'embedding.php': 'php',
+      'source.php': 'php',
+    }
+    
+    for scope, language in scopes.items():
+      if view_scope == scope or view_scope.startswith(scope + '.'):
+        return language
+    
+    return None
+  
+  def _extract_code(self, text: str) -> str:
+    if text.strip().startswith('```'):
+      code_start = text.find('\n') + 1
+      try:
+        return text.strip()[code_start:-4]
+      except:
+        pass
+    
+    return text
+    
   def _reindent(self, text: str) -> str:
     view = self.view
     sel = view.sel()[0]
@@ -242,7 +325,7 @@ class Runner:
     
     return text
   
-  def _insert(self, text: str, view: View = None, end: bool = False):
+  def _insert(self, text: str, view: View = None, end: bool = False) -> None:
     view = view or self.view
     
     if end:
@@ -254,7 +337,7 @@ class Runner:
     view.run_command('insert', {'characters': text})
     view.settings().set('auto_indent', auto_indent)
   
-  def _loader(self):
+  def _loader(self) -> None:
     self.loading = True
   
     while self.loading:

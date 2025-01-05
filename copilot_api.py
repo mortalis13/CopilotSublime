@@ -7,6 +7,8 @@ import requests
 
 ASSISTANT_START = '[[ ASSISTANT ]]'
 ASSISTANT_END = '[[ #ASSISTANT ]]'
+SELECTED_CODE_PLACEHOLDER = '$SELECTION_PLACEHOLDER$'
+INSERT_PLACEHOLDER = '$PLACEHOLDER$'
 
 
 class Copilot:
@@ -72,40 +74,65 @@ class Copilot:
     
     self.logger.debug(f"'''''''''''''\n{result}\n'''''''''''''")
     return result
+  
+  
+  def _rules_by_type(self, type: str) -> list:
+    rules = []
 
+    if type == 'python':
+      rules = [
+        'Generate docstrings for added methods.',
+        'If only docstring is requested, do not repeat given code, only reply with docstring wrapped in """.',
+        'Always add type hints to the methods signatures using Python 3.10 built-in types rather that the typing library.',
+        'Use single quotes for strings.',
+      ]
     
-  def get_code(self, code: str, text: str, code_context: str, file: str, type: str = 'python') -> str:
+    if type == 'java':
+      rules = [
+        'Add proper javadoc comments for methods signatures.',
+        'In the multi-block structures, like "if-else", "try-catch" etc., the start of each block should be on its own line, as in ```if (condition) {\n}\nelse {\n}\nelse{\n}\n```.'
+      ]
+
+    return rules
+
+  
+  def get_code(self, code: str, text: str, code_context: str, file: str, type: str = None, indent: int = None) -> str:
     file = '/' + os.path.normpath(file).replace('\\', '/') if file else 'untitled'
+    language_id = type if type else ''
     
     # Rules for selected code
     if code:
       sys_rules = [
         'The user needs help to modify some code.',
-        'The user includes existing code and marks with $SELECTION_PLACEHOLDER$ where the selected code should go.',
+        f'The user includes existing code and marks with {SELECTED_CODE_PLACEHOLDER} where the selected code should go.',
+        'Do not repeat the provided code in your reply.',
       ]
-      request = f'<currentDocument> \nI have the following code in a file called `{file}`:\n```{type}\n{code_context}\n```\n<selection> \nThe $SELECTION_PLACEHOLDER$ code is:\n```{type}\n{code}\n``` \n</selection>\n \n</currentDocument>\n<userPrompt> \n{text}\n \n</userPrompt>\nThe modified $SELECTION_PLACEHOLDER$ code without ``` is:'
+      request = f'<currentDocument> \nI have the following code in a file called `{file}`:\n```{language_id}\n{code_context}\n```\n<selection> \nThe {SELECTED_CODE_PLACEHOLDER} code is:\n```{language_id}\n{code}\n``` \n</selection>\n \n</currentDocument>\n<userPrompt> \n{text}\n \n</userPrompt>\nThe modified {SELECTED_CODE_PLACEHOLDER} code without ``` is:'
     
-    else:
+    # Rules for the cursor position in a code file, without selection
+    elif code_context:
       sys_rules = [
         'The user needs help to write some new code.',
-        'The user includes existing code and marks with $PLACEHOLDER$ where the new code should go.',
-        'Do not include the text "$PLACEHOLDER$" in your reply.',
+        f'The user includes existing code and marks with {INSERT_PLACEHOLDER} where the new code should go.',
+        f'Do not include the text "{INSERT_PLACEHOLDER}" in your reply.',
+        'Do not repeat the provided code in your reply.',
       ]
-      request = f'<currentDocument> \nI have the following code in a file called `{file}`:\n```{type}\n{code_context}\n```\n \n</currentDocument>\n<userPrompt> \n{text}\n \n</userPrompt>\nDo not repeat the source code from the file in the response.\nThe code that would fit at $PLACEHOLDER$ without ``` is:'
-
-    # Common rules
-    sys_rules.extend([
-      'Generate docstrings for added methods.',
-      'Do not repeat the provided code in your reply.',
-      f'Do not use ``` to wrap the result.',
-    ])
+      request = f'<currentDocument> \nI have the following code in a file called `{file}`:\n```{language_id}\n{code_context}\n```\n \n</currentDocument>\n<userPrompt> \n{text}\n \n</userPrompt>\nDo not repeat the source code from the file in the response.\nThe code that would fit at {INSERT_PLACEHOLDER} without ``` is:'
     
-    if type == 'python':
+    # Rules for empty file
+    else:
+      type = type or 'python'
+      sys_rules = [
+        'The user needs help to write some new code.',
+        f'Respond only with a code block in {type}.',
+      ]
+      request = f'The code that would satisfy the following request: "{text}", without ``` is:'
+    
+    if indent:
       sys_rules.extend([
-        'If docstring is requested, do not repeat given code, only reply with docstring wrapped in """.',
-        'Always add type hints to the methods signatures using Python 3.10 built-in types rather that the typing library.',
-        'Use single quotes for strings.'
+        f'Use indentation equal to {indent} spaces.'
       ])
+    sys_rules.extend(self._rules_by_type(type))
     
     messages = [
       {

@@ -31,6 +31,23 @@ ASSISTANT_START = '[[ ASSISTANT ]]'
 ASSISTANT_END = '[[ #ASSISTANT ]]'
 SETTING_CHAT_VIEW_ID = 'CONTEXT_CHAT_VIEW_ID'
 
+LOADER_STYLE = '''
+<style>
+  html {
+    background-color: #303030;
+    border: 1px solid #bbb;
+    border-radius: 1px;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    margin: 0px 8px 9px;
+    padding: 0;
+    color: #fff;
+  }
+</style>
+'''
+
 
 class Copilot:
   def __init__(self):
@@ -439,6 +456,7 @@ class Runner:
         text += (3 - len(text)) * ' '
       
       text = text.replace(' ', '&nbsp;')
+      text = LOADER_STYLE + text
       
       if not self.view.is_popup_visible():
         self.view.show_popup(text)
@@ -453,7 +471,7 @@ class Runner:
 class CopilotInlineCommand(sublime_plugin.TextCommand):
   def run(self, edit):
     Runner(self.view).inline_code_command()
-
+    
 
 class CopilotChatCommand(sublime_plugin.TextCommand):
   def run(self, edit):

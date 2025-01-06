@@ -1,0 +1,5 @@
+[
+  { "caption": "Copilot: Code Completion", "command": "copilot_inline" },
+  { "caption": "Copilot: Context Chat", "command": "copilot_context_chat"},
+  { "caption": "Copilot: Chat [In Active View]", "command": "copilot_chat"},
+]

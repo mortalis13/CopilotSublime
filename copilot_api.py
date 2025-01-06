@@ -181,7 +181,7 @@ class Copilot:
     return result
   
   
-  def _parse_chat_input(self, text: str) -> str:
+  def _parse_chat_input(self, text: str) -> list:
     messages = []
     content = ''
     

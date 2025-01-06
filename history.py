@@ -8,7 +8,7 @@ class HistoryManager:
     if cls.storage.get(key) and cls.storage[key][-1] == entry:
       return
     
-    if not key in cls.storage:
+    if key not in cls.storage:
       cls.storage[key] = []
     
     cls.storage[key].append(entry)

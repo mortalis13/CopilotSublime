@@ -17,7 +17,6 @@ if cur_path not in sys.path:
 import config
 
 from copilot_api import Copilot, SELECTED_CODE_PLACEHOLDER, INSERT_PLACEHOLDER
-from code_parser import Parser
 from history import HistoryManager
 
 
@@ -214,7 +213,6 @@ class Runner:
       self.window.set_layout({'cells': [[0, 0, 1, 1], [1, 0, 2, 1]], 'cols': [0.0, 0.5, 1.0], 'rows': [0.0, 1.0]})
   
   def _detect_code_type(self) -> str:
-    type = None
     view_scope = self.view.syntax().scope.lower()
     
     scopes = {

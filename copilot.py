@@ -9,6 +9,7 @@ import time
 import threading
 
 from textwrap import indent, dedent
+from requests.exceptions import ConnectionError
 
 cur_path = os.path.dirname(__file__)
 if cur_path not in sys.path:
@@ -35,6 +36,21 @@ LOADER_STYLE = '''
     margin: 0px 8px 9px;
     padding: 0;
     color: #fff;
+  }
+</style>
+'''
+ERROR_POPUP_STYLE = '''
+<style>
+  html {
+    background-color: #333;
+    border: 1px solid #bb4444;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    margin: 5px 10px 6px;
+    padding: 0;
+    color: #eee;
   }
 </style>
 '''
@@ -85,8 +101,7 @@ class Runner:
         result = Copilot().get_code(code, text, code_context, file, type, indent)
       
       except Exception as ex:
-        self.logger.exception(ex)
-        self.error = 'Error getting code completion, check the logs'
+        self._handle_exception(ex)
         return
 
       result = self._extract_code(result)
@@ -139,8 +154,7 @@ class Runner:
         result = Copilot().get_context_chat_response(code, chat_text, file, line_start, line_end)
       
       except Exception as ex:
-        self.logger.exception(ex)
-        self.error = 'Error getting chat response, check the logs'
+        self._handle_exception(ex)
         return
 
       self._split_view()
@@ -185,10 +199,9 @@ class Runner:
         result = Copilot().get_chat_response(chat_text)
       
       except Exception as ex:
-        self.logger.exception(ex)
-        self.error = 'Error getting chat response, check the logs'
+        self._handle_exception(ex)
         return
-      
+  
       self.loading = False
       self._insert(f'\n\n\n{result}\n\n\n', end=True)
       
@@ -199,7 +212,16 @@ class Runner:
     
     threading.Thread(target=self._loader).start()
     threading.Thread(target=run).start()
-
+  
+  
+  def _handle_exception(self, exception: Exception) -> None:
+    if isinstance(exception, ConnectionError):
+      self.logger.exception('Connection error')
+      self.error = 'Connection error, try again later'
+    
+    else:
+      self.logger.exception('Generic error')
+      self.error = 'Error getting Copilot response, check the logs'
   
   def _create_chat_view(self) -> View:
     chat_view = self.window.new_file(syntax='Packages/Markdown/Markdown.sublime-syntax')
@@ -336,11 +358,18 @@ class Runner:
     view.settings().set('auto_indent', auto_indent)
   
   def _loader(self) -> None:
+    def _show_loader(text: str):
+      self.view.show(self.view.sel())
+      if not self.view.is_popup_visible():
+        self.view.show_popup(text, max_width=1000)
+      else:
+        self.view.update_popup(text)
+    
     self.loading = True
   
     while self.loading:
       if self.error:
-        self.view.update_popup(self.error)
+        _show_loader(ERROR_POPUP_STYLE + self.error)
         return
         
       self.loader_text += '.'
@@ -352,12 +381,7 @@ class Runner:
         text += (3 - len(text)) * ' '
       
       text = text.replace(' ', '&nbsp;')
-      text = LOADER_STYLE + text
-      
-      if not self.view.is_popup_visible():
-        self.view.show_popup(text)
-      else:
-        self.view.update_popup(text)
+      _show_loader(LOADER_STYLE + text)
       
       time.sleep(0.2)
 

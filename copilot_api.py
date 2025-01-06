@@ -107,7 +107,7 @@ class Copilot:
         f'The user includes existing code and marks with {SELECTED_CODE_PLACEHOLDER} where the selected code should go.',
         'Do not repeat the provided code in your reply.',
       ]
-      request = f'<currentDocument> \nI have the following code in a file called `{file}`:\n```{language_id}\n{code_context}\n```\n<selection> \nThe {SELECTED_CODE_PLACEHOLDER} code is:\n```{language_id}\n{code}\n``` \n</selection>\n \n</currentDocument>\n<userPrompt> \n{text}\n \n</userPrompt>\nThe modified {SELECTED_CODE_PLACEHOLDER} code without ``` is:'
+      request = f'<currentDocument> \nI have the following code in a file called `{file}`:\n```{language_id}\n{code_context}\n```\n<selection> \nThe {SELECTED_CODE_PLACEHOLDER} code is:\n```{language_id}\n{code}\n``` \n</selection>\n \n</currentDocument>\n<userPrompt> \n{text}\n \n</userPrompt>\nThe modified {SELECTED_CODE_PLACEHOLDER} code, in a single block, without ``` is:'
     
     # Rules for the cursor position in a code file, without selection
     elif code_context:

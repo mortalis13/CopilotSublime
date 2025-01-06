@@ -168,13 +168,13 @@ class Copilot:
     return result
   
   
-  def get_context_chat_response(self, context: str, text: str, file: str, line_start: int, line_end: int, type: str = 'python') -> str:
+  def get_context_chat_response(self, context: str, text: str, file: str, line_start: int, line_end: int) -> str:
     file = os.path.basename(file) if file else 'untitled'
     messages = self._parse_chat_input(text.strip())
     if messages:
       messages.insert(-1, {
         'role': 'user',
-        'content': f"# FILE:{file} CONTEXT\nUser's active selection:\nExcerpt from {file}, lines {line_start} to {line_end}:\n```{type}\n{context}\n```"
+        'content': f"# FILE:{file} CONTEXT\nUser's active selection:\nExcerpt from {file}, lines {line_start} to {line_end}:\n```\n{context}\n```"
       })
     result = self._chat_completion(messages)
     result = f'{ASSISTANT_START}\n{result}\n{ASSISTANT_END}'

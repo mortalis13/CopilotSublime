@@ -298,14 +298,24 @@ class Runner:
     return None
   
   def _extract_code(self, text: str) -> str:
-    if text.strip().startswith('```'):
-      code_start = text.find('\n') + 1
-      try:
-        return text.strip()[code_start:-4]
-      except:
-        pass
+    if not re.search('^```', text, re.MULTILINE):
+      return text
     
-    return text
+    result = []
+    in_block = False
+    
+    lines = text.split('\n')
+    for line in lines:
+      if line == '```':
+        in_block = False
+      elif line.startswith('```'):
+        in_block = True
+        continue
+      
+      if in_block:
+        result.append(line)
+    
+    return '\n'.join(result)
     
   def _reindent(self, text: str) -> str:
     view = self.view

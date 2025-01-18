@@ -33,12 +33,13 @@ LOADER_STYLE = '''
     padding: 0;
   }
   body {
-    margin: 0px 8px 9px;
+    margin: 5px 8px;
     padding: 0;
     color: #fff;
   }
 </style>
 '''
+
 ERROR_POPUP_STYLE = '''
 <style>
   html {
@@ -54,10 +55,6 @@ ERROR_POPUP_STYLE = '''
   }
 </style>
 '''
-
-# -----------
-
-# -----------
 
 
 class Runner:
@@ -381,8 +378,8 @@ class Runner:
       if self.error:
         _show_loader(ERROR_POPUP_STYLE + self.error)
         return
-        
-      self.loader_text += '.'
+      
+      self.loader_text += '•'
       if len(self.loader_text) > 3:
         self.loader_text = ''
       

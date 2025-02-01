@@ -1,15 +1,17 @@
 import os
 import json
+import time
 import logging
 
 import requests
 
+MODEL = 'gpt-4o'
+# gpt-4o o1 gpt-4o-mini o1-mini o3-mini
 
 ASSISTANT_START = '[[ ASSISTANT ]]'
 ASSISTANT_END = '[[ #ASSISTANT ]]'
 SELECTED_CODE_PLACEHOLDER = '$SELECTION_PLACEHOLDER$'
 INSERT_PLACEHOLDER = '$PLACEHOLDER$'
-
 
 class Copilot:
   def __init__(self):
@@ -42,15 +44,18 @@ class Copilot:
     
     body = {
       'messages': messages,
-      'model': 'gpt-4o',
+      'model': MODEL,
       'temperature': 0.1,
       'n': 1
     }
     
     url = 'https://api.githubcopilot.com/chat/completions'
     self.logger.info(url)
+    
     self.logger.debug(f">> {body['model']}")
     self.logger.debug(f'>> {json.dumps(body)}')
+    
+    start_time = time.time()
     response = requests.post(url, headers=headers, json=body)
     
     try:
@@ -59,6 +64,8 @@ class Copilot:
       self.logger.debug(f"<< {data['model']}")
     except:
       self.logger.debug(f'<< Raw text response: {response.text}')
+
+    self.logger.debug(f'time: {(time.time() - start_time):.2f} s')
     
     if response.status_code > 300:
       error = f'{response.status_code} :: {response.text}'

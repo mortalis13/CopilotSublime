@@ -190,10 +190,9 @@ class Runner:
     view.set_scratch(True)
     view.set_name('Copilot Chat')
     
-    def run():
-      chat_text = view.substr(Region(0, view.size()))
+    def run(text: str):
       try:
-        result = Copilot().get_chat_response(chat_text)
+        result = Copilot().get_chat_response(text)
       
       except Exception as ex:
         self._handle_exception(ex)
@@ -202,13 +201,25 @@ class Runner:
       self.loading = False
       self._insert(f'\n\n\n{result}\n\n\n', end=True)
       
-      response_pos = len(chat_text) + 1
+      response_pos = len(text) + 1
       view.sel().clear()
       view.sel().add(response_pos)
       view.show(response_pos)
     
-    threading.Thread(target=self._loader).start()
-    threading.Thread(target=run).start()
+    def run_chat(text: str):
+      threading.Thread(target=self._loader).start()
+      threading.Thread(target=run, args=(text,)).start()
+    
+    def on_panel(text: str):
+      self._insert(text)
+      run_chat(text)
+    
+    chat_text = view.substr(Region(0, view.size()))
+    if not chat_text.strip():
+      self.window.show_input_panel('Copilot Chat Request: ', '', on_panel, None, None)
+    
+    else:
+      run_chat(chat_text)
   
   
   def _handle_exception(self, exception: Exception) -> None:

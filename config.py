@@ -23,7 +23,7 @@ def config_logger():
       os.makedirs(logs_path)
     
     log_path = f'{logs_path}/.copilot_{datetime.datetime.now().strftime("%Y%m%d")}.log'
-    file_handler = logging.FileHandler(log_path, encoding='utf8')
+    file_handler = logging.FileHandler(log_path, encoding='utf8', delay=True)
     file_handler.setLevel(logging.DEBUG)
     file_formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
     file_handler.setFormatter(file_formatter)

@@ -186,9 +186,6 @@ class Runner:
 
   def chat_command(self) -> None:
     view = self.view
-    view.assign_syntax('Packages/Markdown/Markdown.sublime-syntax')
-    view.set_scratch(True)
-    view.set_name('Copilot Chat')
     
     def run(text: str):
       try:
@@ -207,6 +204,10 @@ class Runner:
       view.show(response_pos)
     
     def run_chat(text: str):
+      view.assign_syntax('Packages/Markdown/Markdown.sublime-syntax')
+      view.set_scratch(True)
+      view.set_name('Copilot Chat')
+      
       threading.Thread(target=self._loader).start()
       threading.Thread(target=run, args=(text,)).start()
     

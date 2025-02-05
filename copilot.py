@@ -17,7 +17,7 @@ if cur_path not in sys.path:
 
 import config
 
-from copilot_api import Copilot, SELECTED_CODE_PLACEHOLDER, INSERT_PLACEHOLDER
+from copilot_api import Copilot, SELECTED_CODE_PLACEHOLDER, INSERT_PLACEHOLDER, ASSISTANT_END
 from history import HistoryManager
 
 
@@ -107,45 +107,37 @@ class Runner:
       self.loading = False
       self._insert(result)
       
-    def on_panel(text: str):
+    def _on_panel(text: str):
       self.logger.info(f'>> "{text}"')
       HistoryManager.add(text, history_key)
       threading.Thread(target=self._loader).start()
       threading.Thread(target=run, args=(text,)).start()
     
-    input_view = self.window.show_input_panel('Copilot Request: ', '', on_panel, None, None)
+    input_view = self.window.show_input_panel('Copilot Request: ', '', _on_panel, None, None)
     input_view.settings().set('isCopilotPanel', True)
     self.window.settings().set('panelHistoryKey', history_key)
 
 
   def context_chat_command(self) -> None:
-    view = self.view
-    
     history_key = 'context_chat_command'
     HistoryManager.reset_index()
     
-    def run(text: str):
-      sel = view.sel()[0]
-      code = view.substr(sel)
-      file = view.file_name()
+    def run(text: str, context_view: View, chat_view: View):
+      sel = context_view.sel()[0]
+      code = context_view.substr(sel)
+      file = context_view.file_name()
       
-      line_start = view.rowcol(min(sel.a, sel.b))[0] + 1
-      line_end = view.rowcol(max(sel.a, sel.b))[0] + 1
+      line_start = context_view.rowcol(min(sel.a, sel.b))[0] + 1
+      line_end = context_view.rowcol(max(sel.a, sel.b))[0] + 1
       
       is_selected = True if code.strip() else False
       if not is_selected:
-        code = view.substr(Region(0, view.size()))
+        code = context_view.substr(Region(0, context_view.size()))
         line_start = 1
-        line_end = view.rowcol(view.size())[0] + 1
+        line_end = context_view.rowcol(context_view.size())[0] + 1
       
-      chat_view_id = self.window.settings().get(SETTING_CHAT_VIEW_ID)
-      chat_view = next(filter(lambda _view: _view.id() == chat_view_id, self.window.views()), None)
-        
-      chat_text = text
-      if chat_view:
-        chat_text = chat_view.substr(Region(0, chat_view.size())) + text
-      else:
-        self.window.settings().erase(SETTING_CHAT_VIEW_ID)
+      chat_length = chat_view.size()
+      chat_text = chat_view.substr(Region(0, chat_length))
       
       try:
         result = Copilot().get_context_chat_response(code, chat_text, file, line_start, line_end)
@@ -154,34 +146,65 @@ class Runner:
         self._handle_exception(ex)
         return
 
-      self._split_view()
+      self.loading = False
       
-      if not chat_view:
-        chat_view = self._create_chat_view()
+      self._insert(f'\n\n\n{result}\n\n\n', chat_view, end=True)
+      response_pos = chat_length + 1
+      
+      chat_view.sel().clear()
+      chat_view.sel().add(response_pos)
+      chat_view.show(response_pos)
+      
+    def _run_chat(chat_view: View, text: str):
+      self._split_view()
       
       # Ensure chat view is in the side panel
       if self.window.get_view_index(chat_view) != (1, 0):
         self.window.set_view_index(chat_view, 1, 0)
       
-      self.window.focus_view(view)
+      context_view = self.view
+      if self._is_focused_chat_view():
+        context_view = self.window.active_view_in_group(0)
       
-      self.loading = False
-      self._insert(f'{text}\n\n\n{result}\n\n\n', chat_view, end=True)
-      
-      response_pos = len(chat_text) + 1
-      chat_view.sel().clear()
-      chat_view.sel().add(response_pos)
-      chat_view.show(response_pos)
-      
-    def on_panel(text: str):
+      threading.Thread(target=self._loader).start()
+      threading.Thread(target=run, args=(text, context_view, chat_view,)).start()
+    
+    def _on_panel(text: str):
       self.logger.info(f'>> "{text}"')
       HistoryManager.add(text, history_key)
-      threading.Thread(target=self._loader).start()
-      threading.Thread(target=run, args=(text,)).start()
+      
+      chat_view = self._get_chat_view()
+      self._insert(text, chat_view, end=True)
+      
+      _run_chat(chat_view, text)
     
-    input_view = self.window.show_input_panel('Copilot Context Request: ', '', on_panel, None, None)
-    input_view.settings().set('isCopilotPanel', True)
-    self.window.settings().set('panelHistoryKey', history_key)
+    def _find_chat_request(chat_view: View) -> str:
+      chat_lines = []
+      lines = chat_view.lines(Region(0, chat_view.size()))
+      
+      for line in reversed(lines):
+        text = chat_view.substr(line)
+        if text == ASSISTANT_END:
+          break
+        chat_lines.append(text)
+      
+      chat_input = '\n'.join(chat_lines[::-1]).strip()
+      return chat_input
+    
+    # -----------
+    open_panel = True
+    
+    if self._is_focused_chat_view():
+      chat_view = self.view
+      chat_input = _find_chat_request(chat_view)
+      if chat_input:
+        open_panel = False
+        _run_chat(chat_view, chat_input)
+    
+    if open_panel:
+      input_view = self.window.show_input_panel('Copilot Context Request: ', '', _on_panel, None, None)
+      input_view.settings().set('isCopilotPanel', True)
+      self.window.settings().set('panelHistoryKey', history_key)
 
 
   def chat_command(self) -> None:
@@ -203,7 +226,7 @@ class Runner:
       view.sel().add(response_pos)
       view.show(response_pos)
     
-    def run_chat(text: str):
+    def _run_chat(text: str):
       view.assign_syntax('Packages/Markdown/Markdown.sublime-syntax')
       view.set_scratch(True)
       view.set_name('Copilot Chat')
@@ -211,16 +234,16 @@ class Runner:
       threading.Thread(target=self._loader).start()
       threading.Thread(target=run, args=(text,)).start()
     
-    def on_panel(text: str):
+    def _on_panel(text: str):
       self._insert(text)
-      run_chat(text)
+      _run_chat(text)
     
     chat_text = view.substr(Region(0, view.size()))
     if not chat_text.strip():
-      self.window.show_input_panel('Copilot Chat Request: ', '', on_panel, None, None)
+      self.window.show_input_panel('Copilot Chat Request: ', '', _on_panel, None, None)
     
     else:
-      run_chat(chat_text)
+      _run_chat(chat_text)
   
   
   def _handle_exception(self, exception: Exception) -> None:
@@ -238,6 +261,15 @@ class Runner:
     chat_view.set_name('Copilot Context Chat')
     self.window.settings().set(SETTING_CHAT_VIEW_ID, chat_view.id())
     return chat_view
+  
+  def _get_chat_view(self) -> View:
+    chat_view_id = self.window.settings().get(SETTING_CHAT_VIEW_ID)
+    chat_view = next(filter(lambda _view: _view.id() == chat_view_id, self.window.views()), None)
+    return chat_view or self._create_chat_view()
+  
+  def _is_focused_chat_view(self) -> bool:
+    chat_view_id = self.window.settings().get(SETTING_CHAT_VIEW_ID)
+    return self.view.id() == chat_view_id
   
   def _split_view(self) -> None:
     if self.window.num_groups() == 1:

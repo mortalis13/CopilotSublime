@@ -162,6 +162,7 @@ class ViewUtilsMixin:
       'text.html.jsp': 'jsp',
       'text.html.markdown': 'markdown',
       'text.html.vue': 'vue',
+      'text.plain': 'text',
 
       'source.d': 'd',
       'source.cs': 'csharp',

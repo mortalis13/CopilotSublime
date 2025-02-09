@@ -23,6 +23,12 @@ from utils import ViewUtilsMixin, extract_code
 
 
 SETTING_CHAT_VIEW_ID = 'CONTEXT_CHAT_VIEW_ID'
+CHAT_VIEW_NAME = 'Copilot Chat'
+CONTEXT_CHAT_VIEW_NAME = 'Copilot Context Chat'
+
+class ChatType:
+  copilot = 'COPILOT_CHAT'
+  context = 'CONTEXT_CHAT'
 
 
 class Runner(ViewUtilsMixin):
@@ -40,7 +46,7 @@ class Runner(ViewUtilsMixin):
   def inline_code_command(self) -> None:
     view = self.view
     
-    history_key = 'inline_code_command'
+    history_key = 'inline_code_history'
     HistoryManager.reset_index()
     
     def run(text: str):
@@ -86,8 +92,8 @@ class Runner(ViewUtilsMixin):
     self.window.settings().set('panelHistoryKey', history_key)
 
 
-  def context_chat_command(self) -> None:
-    history_key = 'context_chat_command'
+  def _run_context_chat(self) -> None:
+    history_key = 'context_chat_history'
     HistoryManager.reset_index()
     
     def run(text: str, context_view: View, chat_view: View):
@@ -175,7 +181,7 @@ class Runner(ViewUtilsMixin):
       self.window.settings().set('panelHistoryKey', history_key)
 
 
-  def chat_command(self) -> None:
+  def _run_copilot_chat(self) -> None:
     view = self.view
     
     def run(text: str):
@@ -197,7 +203,7 @@ class Runner(ViewUtilsMixin):
     def _run_chat(text: str):
       view.assign_syntax('Packages/Markdown/Markdown.sublime-syntax')
       view.set_scratch(True)
-      view.set_name('Copilot Chat')
+      view.set_name(CHAT_VIEW_NAME)
       
       threading.Thread(target=self._loader).start()
       threading.Thread(target=run, args=(text,)).start()
@@ -212,7 +218,16 @@ class Runner(ViewUtilsMixin):
     
     else:
       _run_chat(chat_text)
-  
+
+
+  def chat_command(self) -> None:
+    chat_type = self._chat_type()
+    if chat_type == ChatType.copilot:
+      self._run_copilot_chat()
+      
+    if chat_type == ChatType.context:
+      self._run_context_chat()
+      
   
   def _handle_exception(self, exception: Exception) -> None:
     if isinstance(exception, ConnectionError):
@@ -226,7 +241,7 @@ class Runner(ViewUtilsMixin):
   def _create_chat_view(self) -> View:
     chat_view = self.window.new_file(syntax='Packages/Markdown/Markdown.sublime-syntax')
     chat_view.set_scratch(True)
-    chat_view.set_name('Copilot Context Chat')
+    chat_view.set_name(CONTEXT_CHAT_VIEW_NAME)
     self.window.settings().set(SETTING_CHAT_VIEW_ID, chat_view.id())
     return chat_view
   
@@ -243,6 +258,32 @@ class Runner(ViewUtilsMixin):
     if self.window.num_groups() == 1:
       self.window.set_layout({'cells': [[0, 0, 1, 1], [1, 0, 2, 1]], 'cols': [0.0, 0.5, 1.0], 'rows': [0.0, 1.0]})
   
+  def _chat_type(self):
+    view = self.view
+    
+    if view.name() == CONTEXT_CHAT_VIEW_NAME:
+      return ChatType.context
+      
+    if view.name() == CHAT_VIEW_NAME:
+      return ChatType.copilot
+    
+    if view.file_name():
+      return ChatType.context
+  
+    text = view.substr(Region(0, view.size()))
+    if not text.strip():
+      return ChatType.copilot
+    
+    syntax = self._detect_code_type()
+    if syntax != 'text':
+      return ChatType.context
+    
+    sel = view.sel()[0]
+    if sel.a != sel.b:
+      return ChatType.context
+    
+    return ChatType.copilot
+  
 
 class CopilotInlineCommand(sublime_plugin.TextCommand):
   def run(self, edit):
@@ -252,11 +293,6 @@ class CopilotInlineCommand(sublime_plugin.TextCommand):
 class CopilotChatCommand(sublime_plugin.TextCommand):
   def run(self, edit):
     Runner(self.view).chat_command()
-  
-
-class CopilotContextChatCommand(sublime_plugin.TextCommand):
-  def run(self, edit):
-    Runner(self.view).context_chat_command()
   
 
 class ViewListener(sublime_plugin.ViewEventListener):

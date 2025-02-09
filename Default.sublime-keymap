@@ -1,6 +1,5 @@
 [
   { "keys": ["ctrl+i"], "command": "copilot_inline" },
-  { "keys": ["alt+i"], "command": "copilot_context_chat" },
   { "keys": ["ctrl+shift+i"], "command": "copilot_chat" },
   
   {

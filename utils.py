@@ -40,57 +40,57 @@ ERROR_POPUP_STYLE = '''
 
 class ViewUtilsMixin:
   view: View
-
+  
   def _insert(self, text: str, view: View = None, end: bool = False) -> None:
     view = view or self.view
-
+    
     if end:
       view.sel().clear()
       view.sel().add(view.size())
-
+    
     auto_indent = view.settings().get('auto_indent')
     view.settings().set('auto_indent', False)
     view.run_command('insert', {'characters': text})
     view.settings().set('auto_indent', auto_indent)
-
+  
   def _reindent(self, text: str) -> str:
     view = self.view
     sel = view.sel()[0]
-
+    
     start = min(sel.a, sel.b)
-
+    
     # Detect selection indentation
     sel_indent = 0
-
+    
     line = view.substr(view.line(start))
     if line.startswith(' '):
       match = re.match(r' *', line)
       sel_indent = len(match.group(0))
-
+    
     # Detect text indentation
     text_indent = 0
-
+    
     lines = text.split('\n')
     for line in lines:
       if not line.lstrip(): continue
       text_indent = len(line) - len(line.lstrip())
       break
-
+    
     # Fix indentation
     fix_indent = sel_indent - text_indent
     if fix_indent > 0:
       text = textwrap.indent(text, fix_indent * ' ')
-
+    
     elif fix_indent < 0:
       text = textwrap.dedent(text)
       text = textwrap.indent(text, abs(fix_indent) * ' ')
-
+    
     # Remove first line indent if selection is empty or its start is not on the line start
     if start != view.line(start).a:
       text = text.lstrip()
-
+    
     return text
-
+  
   def _loader(self) -> None:
     def _show_loader(text: str):
       self.view.show(self.view.sel())
@@ -98,32 +98,32 @@ class ViewUtilsMixin:
         self.view.show_popup(text, max_width=1000)
       else:
         self.view.update_popup(text)
-
+    
     self.loading = True
-
+  
     while self.loading:
       if self.error:
         _show_loader(ERROR_POPUP_STYLE + self.error)
         return
-
+      
       self.loader_text += '•'
       if len(self.loader_text) > 3:
         self.loader_text = ''
-
+      
       text = self.loader_text
       if len(text) < 3:
         text += (3 - len(text)) * ' '
-
+      
       text = text.replace(' ', '&nbsp;')
       _show_loader(LOADER_STYLE + text)
-
+      
       time.sleep(0.2)
 
     self.view.hide_popup()
-
+  
   def _detect_code_type(self) -> str:
     view_scope = self.view.syntax().scope.lower()
-
+    
     scopes = {
       'source.actionscript': 'as',
       'source.applescript': 'applescript',
@@ -158,7 +158,7 @@ class ViewUtilsMixin:
       'source.ts': 'typescript',
       'source.vbs': 'vbs',
       'source.yaml': 'yaml',
-
+      
       'text.haml': 'haml',
       'text.html.basic': 'html',
       'text.html.jsp': 'jsp',
@@ -178,21 +178,21 @@ class ViewUtilsMixin:
       'embedding.php': 'php',
       'source.php': 'php',
     }
-
+    
     for scope, language in scopes.items():
       if view_scope == scope or view_scope.startswith(scope + '.'):
         return language
-
+    
     return None
 
 
 def extract_code(text: str) -> str:
   if not re.search('^```', text, re.MULTILINE):
     return text
-
+  
   result = []
   in_block = False
-
+  
   lines = text.split('\n')
   for line in lines:
     if line == '```':
@@ -200,8 +200,8 @@ def extract_code(text: str) -> str:
     elif line.startswith('```'):
       in_block = True
       continue
-
+    
     if in_block:
       result.append(line)
-
+  
   return '\n'.join(result)

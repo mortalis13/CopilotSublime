@@ -95,7 +95,7 @@ class Runner(ViewUtilsMixin):
     history_key = 'context_chat_history'
     HistoryManager.reset_index()
     
-    def run(text: str, context_view: View, chat_view: View):
+    def run(context_view: View, chat_view: View):
       sel = context_view.sel()[0]
       code = context_view.substr(sel)
       file = context_view.file_name()
@@ -128,7 +128,7 @@ class Runner(ViewUtilsMixin):
       chat_view.sel().add(response_pos)
       chat_view.show(response_pos)
       
-    def _run_chat(chat_view: View, text: str):
+    def _run_chat(chat_view: View):
       self._split_view()
       
       # Ensure chat view is in the side panel
@@ -140,7 +140,7 @@ class Runner(ViewUtilsMixin):
         context_view = self.window.active_view_in_group(0)
       
       threading.Thread(target=self._loader).start()
-      threading.Thread(target=run, args=(text, context_view, chat_view,)).start()
+      threading.Thread(target=run, args=(context_view, chat_view,)).start()
     
     def _on_panel(text: str):
       self.logger.info(f'>> "{text}"')
@@ -149,30 +149,17 @@ class Runner(ViewUtilsMixin):
       chat_view = self._get_chat_view()
       self._insert(text, chat_view, end=True)
       
-      _run_chat(chat_view, text)
-    
-    def _find_chat_request(chat_view: View) -> str:
-      chat_lines = []
-      lines = chat_view.lines(Region(0, chat_view.size()))
-      
-      for line in reversed(lines):
-        text = chat_view.substr(line)
-        if text == ASSISTANT_END:
-          break
-        chat_lines.append(text)
-      
-      chat_input = '\n'.join(chat_lines[::-1]).strip()
-      return chat_input
+      _run_chat(chat_view)
     
     # -----------
     open_panel = True
     
     if self._is_focused_chat_view():
       chat_view = self.view
-      chat_input = _find_chat_request(chat_view)
+      chat_input = self._find_chat_request(chat_view)
       if chat_input:
         open_panel = False
-        _run_chat(chat_view, chat_input)
+        _run_chat(chat_view)
     
     if open_panel:
       input_view = self.window.show_input_panel('Copilot Context Request: ', '', _on_panel, None, None)
@@ -181,11 +168,16 @@ class Runner(ViewUtilsMixin):
 
 
   def _run_copilot_chat(self) -> None:
+    history_key = 'chat_history'
+    HistoryManager.reset_index()
+    
     view = self.view
     
-    def run(text: str):
+    def run():
+      chat_text = view.substr(Region(0, view.size()))
+      
       try:
-        result = Copilot().get_chat_response(text)
+        result = Copilot().get_chat_response(chat_text)
       
       except Exception as ex:
         self._handle_exception(ex)
@@ -194,29 +186,33 @@ class Runner(ViewUtilsMixin):
       self.loading = False
       self._insert(f'\n\n\n{result}\n\n\n', end=True)
       
-      response_pos = len(text) + 1
+      response_pos = len(chat_text) + 1
       view.sel().clear()
       view.sel().add(response_pos)
       view.show(response_pos)
     
-    def _run_chat(text: str):
+    def _run_chat():
       view.assign_syntax('Packages/Markdown/Markdown.sublime-syntax')
       view.set_scratch(True)
       view.set_name(CHAT_VIEW_NAME)
       
       threading.Thread(target=self._loader).start()
-      threading.Thread(target=run, args=(text,)).start()
+      threading.Thread(target=run).start()
     
     def _on_panel(text: str):
-      self._insert(text)
-      _run_chat(text)
-    
-    chat_text = view.substr(Region(0, view.size()))
-    if not chat_text.strip():
-      self.window.show_input_panel('Copilot Chat Request: ', '', _on_panel, None, None)
+      HistoryManager.add(text, history_key)
+      
+      self._insert(text, end=True)
+      _run_chat()
+
+    chat_input = self._find_chat_request(self.view)
+    if not chat_input:
+      input_view = self.window.show_input_panel('Copilot Chat Request: ', '', _on_panel, None, None)
+      input_view.settings().set('isCopilotPanel', True)
+      self.window.settings().set('panelHistoryKey', history_key)
     
     else:
-      _run_chat(chat_text)
+      _run_chat()
 
 
   def chat_command(self) -> None:
@@ -226,7 +222,20 @@ class Runner(ViewUtilsMixin):
       
     if chat_type == ChatType.context:
       self._run_context_chat()
-      
+
+
+  def _find_chat_request(self, chat_view: View) -> str:
+    chat_lines = []
+    lines = chat_view.lines(Region(0, chat_view.size()))
+    
+    for line in reversed(lines):
+      text = chat_view.substr(line)
+      if text == ASSISTANT_END:
+        break
+      chat_lines.append(text)
+    
+    chat_input = '\n'.join(chat_lines[::-1]).strip()
+    return chat_input
   
   def _handle_exception(self, exception: Exception) -> None:
     if isinstance(exception, ConnectionError):

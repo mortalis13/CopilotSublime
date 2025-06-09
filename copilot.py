@@ -22,12 +22,20 @@ from utils import ViewUtilsMixin, extract_code
 
 
 SETTING_CHAT_VIEW_ID = 'CONTEXT_CHAT_VIEW_ID'
+SETTING_IS_COPILOT_PANEL = 'isCopilotPanel'
+SETTING_PANEL_HISTORY_KEY = 'panelHistoryKey'
+
 CHAT_VIEW_NAME = 'Copilot Chat'
 CONTEXT_CHAT_VIEW_NAME = 'Copilot Context Chat'
 
 class ChatType:
   copilot = 'COPILOT_CHAT'
   context = 'CONTEXT_CHAT'
+
+
+# Clear the last chat ID on plugin loading
+for window in sublime.windows():
+  window.settings().erase(SETTING_CHAT_VIEW_ID)
 
 
 class Runner(ViewUtilsMixin):
@@ -87,8 +95,8 @@ class Runner(ViewUtilsMixin):
       threading.Thread(target=run, args=(text,)).start()
     
     input_view = self.window.show_input_panel('Copilot Request: ', '', _on_panel, None, None)
-    input_view.settings().set('isCopilotPanel', True)
-    self.window.settings().set('panelHistoryKey', history_key)
+    input_view.settings().set(SETTING_IS_COPILOT_PANEL, True)
+    self.window.settings().set(SETTING_PANEL_HISTORY_KEY, history_key)
 
 
   def _run_context_chat(self) -> None:
@@ -163,8 +171,8 @@ class Runner(ViewUtilsMixin):
     
     if open_panel:
       input_view = self.window.show_input_panel('Copilot Context Request: ', '', _on_panel, None, None)
-      input_view.settings().set('isCopilotPanel', True)
-      self.window.settings().set('panelHistoryKey', history_key)
+      input_view.settings().set(SETTING_IS_COPILOT_PANEL, True)
+      self.window.settings().set(SETTING_PANEL_HISTORY_KEY, history_key)
 
 
   def _run_copilot_chat(self) -> None:
@@ -208,8 +216,8 @@ class Runner(ViewUtilsMixin):
     chat_input = self._find_chat_request(self.view)
     if not chat_input:
       input_view = self.window.show_input_panel('Copilot Chat Request: ', '', _on_panel, None, None)
-      input_view.settings().set('isCopilotPanel', True)
-      self.window.settings().set('panelHistoryKey', history_key)
+      input_view.settings().set(SETTING_IS_COPILOT_PANEL, True)
+      self.window.settings().set(SETTING_PANEL_HISTORY_KEY, history_key)
     
     else:
       _run_chat()
@@ -319,15 +327,16 @@ class ViewListener(sublime_plugin.ViewEventListener):
       return
     
     chat_view_id = window.settings().get(SETTING_CHAT_VIEW_ID)
-    if chat_view_id and chat_view_id == self.view.id():
+    if chat_view_id and self.view.id() == chat_view_id:
       # Restore default layout
       window.set_layout({'cells': [[0, 0, 1, 1]], 'cols': [0.0, 1.0], 'rows': [0.0, 1.0]})
+      window.settings().erase(SETTING_CHAT_VIEW_ID)
   
 
 class GetCopilotHistoryEntryCommand(sublime_plugin.TextCommand):
   # Command for input panel view
   def run(self, edit: Edit, up: bool):
-    key = self.view.window().settings().get('panelHistoryKey')
+    key = self.view.window().settings().get(SETTING_PANEL_HISTORY_KEY)
     
     if up:
       entry = HistoryManager.prev(key)

@@ -5,8 +5,8 @@ import logging
 
 import requests
 
-MODEL = 'gpt-4o'
-# gpt-4o o1 gpt-4o-mini o1-mini o3-mini
+MODEL = 'gpt-4.1'
+# gpt-4.1 gpt-4o o1 gpt-4o-mini o1-mini o3-mini
 
 ASSISTANT_START = '[[ ASSISTANT ]]'
 ASSISTANT_END = '[[ #ASSISTANT ]]'

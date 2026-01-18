@@ -13,4 +13,10 @@
     "command": "get_copilot_history_entry",
     "args": { "up": false }
   },
+
+  {
+    "keys": ["ctrl+alt+shift+v"],
+    "command": "run_macro_file",
+    "args": { "file": "Packages/Copilot/PasteWithoutSyntax.sublime-macro" }
+  },
 ]

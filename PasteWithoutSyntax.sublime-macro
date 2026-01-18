@@ -1,0 +1,7 @@
+[
+	{"command": "paste_and_indent"},
+	{
+		"command": "set_file_type",
+		"args": { "syntax": "Packages/Text/Plain text.tmLanguage" }
+	}
+]

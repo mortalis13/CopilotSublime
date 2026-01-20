@@ -49,6 +49,12 @@ class Copilot:
       'n': 1
     }
     
+    sys_rule = next((rule for rule in body['messages'] if rule['role'] == 'system'), None)
+    if not sys_rule:
+      sys_rule = {'role': 'system', 'content': ''}
+      body['messages'].insert(0, sys_rule)
+    sys_rule['content'] += '\n'.join(self._common_rules())
+
     url = 'https://api.githubcopilot.com/chat/completions'
     self.logger.info(url)
     
@@ -82,6 +88,12 @@ class Copilot:
     self.logger.debug(f"'''''''''''''\n{result}\n'''''''''''''")
     return result
   
+  
+  def _common_rules(self) -> list:
+    return [
+      "Respond only with direct, factual information. Do not include introductory phrases such as 'Certainly!', 'Great question!', 'Absolutely!', 'Sure!', or similar. Provide concise and concrete answers without pleasantries or commentary.",
+      'Do not use any introductory or filler phrases. Start your response with the main information. Begin your response with the answer itself.',
+    ]
   
   def _rules_by_type(self, type: str) -> list:
     rules = []
@@ -140,7 +152,7 @@ class Copilot:
         f'Use indentation equal to {indent} spaces.'
       ])
     sys_rules.extend(self._rules_by_type(type))
-    
+
     messages = [
       {
         'role': 'system',

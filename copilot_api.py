@@ -13,11 +13,16 @@ ASSISTANT_END = '[[ #ASSISTANT ]]'
 SELECTED_CODE_PLACEHOLDER = '$SELECTION_PLACEHOLDER$'
 INSERT_PLACEHOLDER = '$PLACEHOLDER$'
 
+storage = {}
+
 class Copilot:
   def __init__(self):
     self.logger = logging.getLogger('copilot')
   
   def _get_token(self) -> str:
+    token = storage.get('token')
+    if token: return token
+    
     self.logger.debug(f'get token')
     token_path = f'{os.path.dirname(os.path.realpath(__file__))}/.copilot_token'
     with open(token_path, 'r') as f:
@@ -31,10 +36,11 @@ class Copilot:
     
     response = requests.get(url, headers=headers)
     token = response.json().get('token')
+    
+    storage['token'] = token
     return token
 
-
-  def _chat_completion(self, messages: list) -> str:
+  def _send_request(self, body: dict) -> dict:
     token = self._get_token()
     
     headers = {
@@ -42,6 +48,34 @@ class Copilot:
       'editor-version': 'vscode/1.95.3',
     }
     
+    url = 'https://api.githubcopilot.com/chat/completions'
+    self.logger.info(url)
+    
+    self.logger.debug(f">> {body['model']}")
+    self.logger.debug(f'>> {json.dumps(body)}')
+    
+    start_time = time.time()
+    response = requests.post(url, headers=headers, json=body)
+    
+    self.logger.debug(f'time: {(time.time() - start_time):.2f} s')
+    
+    if response.ok:
+      data = response.json()
+      self.logger.debug(f'<< {json.dumps(data)}')
+      self.logger.debug(f"<< {data['model']}")
+      return data
+
+    self.logger.debug(f'<< Raw text response: {response.text}')
+    
+    if response.status_code == 401 and 'token expired' in response.text:
+      if 'token' in storage: del storage['token']
+      return self._send_request(body)
+    
+    error = f'{response.status_code} :: {response.text}'
+    self.logger.error(error)
+    raise Exception(error)
+    
+  def _chat_completion(self, messages: list) -> str:
     body = {
       'messages': messages,
       'model': MODEL,
@@ -54,29 +88,8 @@ class Copilot:
       sys_rule = {'role': 'system', 'content': ''}
       body['messages'].insert(0, sys_rule)
     sys_rule['content'] += '\n'.join(self._common_rules())
-
-    url = 'https://api.githubcopilot.com/chat/completions'
-    self.logger.info(url)
-    
-    self.logger.debug(f">> {body['model']}")
-    self.logger.debug(f'>> {json.dumps(body)}')
-    
-    start_time = time.time()
-    response = requests.post(url, headers=headers, json=body)
-    
-    try:
-      data = response.json()
-      self.logger.debug(f'<< {json.dumps(data)}')
-      self.logger.debug(f"<< {data['model']}")
-    except:
-      self.logger.debug(f'<< Raw text response: {response.text}')
-
-    self.logger.debug(f'time: {(time.time() - start_time):.2f} s')
-    
-    if response.status_code > 300:
-      error = f'{response.status_code} :: {response.text}'
-      self.logger.error(error)
-      raise Exception(error)
+      
+    data = self._send_request(body)
     
     result = None
     if data.get('choices'):
@@ -87,7 +100,6 @@ class Copilot:
     
     self.logger.debug(f"'''''''''''''\n{result}\n'''''''''''''")
     return result
-  
   
   def _common_rules(self) -> list:
     return [

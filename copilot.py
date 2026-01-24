@@ -16,7 +16,7 @@ if cur_path not in sys.path:
 
 import config
 
-from copilot_api import Copilot, SELECTED_CODE_PLACEHOLDER, INSERT_PLACEHOLDER, ASSISTANT_START, ASSISTANT_END
+from copilot_api import Copilot, Selection, SELECTED_CODE_PLACEHOLDER, INSERT_PLACEHOLDER, ASSISTANT_START, ASSISTANT_END
 from history import HistoryManager
 from utils import ViewUtilsMixin, extract_code
 
@@ -106,28 +106,33 @@ class Runner(ViewUtilsMixin):
     def run(context_view: View, chat_view: View):
       sel = context_view.sel()[0]
       code = context_view.substr(sel)
+      
+      # File path or view content
       file = context_view.file_name()
+      if not file:
+        file = context_view.substr(Region(0, context_view.size()))
       
       line_start = context_view.rowcol(min(sel.a, sel.b))[0] + 1
       line_end = context_view.rowcol(max(sel.a, sel.b))[0] + 1
       
-      is_selected = True if code.strip() else False
-      if not is_selected:
-        code = context_view.substr(Region(0, context_view.size()))
-        line_start = 1
-        line_end = context_view.rowcol(context_view.size())[0] + 1
-      
       chat_length = chat_view.size()
       chat_text = chat_view.substr(Region(0, chat_length))
       
+      selection = None
+      if code.strip():
+        type = self._detect_code_type()
+        selection = Selection(code, type, line_start, line_end)
+      
       try:
-        result = Copilot().get_context_chat_response(code, chat_text, file, line_start, line_end)
+        result = Copilot().get_context_chat_response(chat_text, selection, file)
       
       except Exception as ex:
         self._handle_exception(ex)
         return
 
       self.loading = False
+      
+      if not result: return
       
       self._insert(f'\n\n\n{result}\n\n\n', chat_view, end=True)
       response_pos = chat_length + 1
@@ -290,8 +295,7 @@ class Runner(ViewUtilsMixin):
     if not text.strip():
       return ChatType.copilot
     
-    syntax = self._detect_code_type()
-    if syntax != 'text':
+    if self._detect_code_type():
       return ChatType.context
     
     sel = view.sel()[0]

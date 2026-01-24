@@ -2,8 +2,11 @@ import os
 import json
 import time
 import logging
+from dataclasses import dataclass
 
 import requests
+
+from templates import SYSTEM_RULES, CONTEXT_SELECTION, CONTEXT_FILE, USER_REQUEST
 
 MODEL = 'gpt-4.1'
 # gpt-4.1 gpt-4o o1 gpt-4o-mini o1-mini o3-mini
@@ -14,6 +17,14 @@ SELECTED_CODE_PLACEHOLDER = '$SELECTION_PLACEHOLDER$'
 INSERT_PLACEHOLDER = '$PLACEHOLDER$'
 
 storage = {}
+
+@dataclass
+class Selection:
+  text: str
+  type: str
+  line_start: int
+  line_end: int
+
 
 class Copilot:
   def __init__(self):
@@ -79,16 +90,10 @@ class Copilot:
     body = {
       'messages': messages,
       'model': MODEL,
-      'temperature': 0.1,
-      'n': 1
+      'temperature': 0,
+      'n': 1,
     }
     
-    sys_rule = next((rule for rule in body['messages'] if rule['role'] == 'system'), None)
-    if not sys_rule:
-      sys_rule = {'role': 'system', 'content': ''}
-      body['messages'].insert(0, sys_rule)
-    sys_rule['content'] += '\n'.join(self._common_rules())
-      
     data = self._send_request(body)
     
     result = None
@@ -100,12 +105,6 @@ class Copilot:
     
     self.logger.debug(f"'''''''''''''\n{result}\n'''''''''''''")
     return result
-  
-  def _common_rules(self) -> list:
-    return [
-      "Respond only with direct, factual information. Do not include introductory phrases such as 'Certainly!', 'Great question!', 'Absolutely!', 'Sure!', or similar. Provide concise and concrete answers without pleasantries or commentary.",
-      'Do not use any introductory or filler phrases. Start your response with the main information. Begin your response with the answer itself.',
-    ]
   
   def _rules_by_type(self, type: str) -> list:
     rules = []
@@ -199,14 +198,62 @@ class Copilot:
     return result
   
   
-  def get_context_chat_response(self, context: str, text: str, file: str, line_start: int, line_end: int) -> str:
-    file = os.path.basename(file) if file else 'untitled'
-    messages = self._parse_chat_input(text.strip())
-    if messages:
-      messages.insert(-1, {
-        'role': 'user',
-        'content': f"# FILE:{file} CONTEXT\nUser's active selection:\nExcerpt from {file}, lines {line_start} to {line_end}:\n```\n{context}\n```"
-      })
+  # -- Context chat
+  
+  def _get_system_rules(self) -> dict:
+    return {
+      'role': 'system',
+      'content': SYSTEM_RULES.strip()
+    }
+  
+  def _get_context_rule(self, selection: Selection, file: str) -> dict:
+    if os.path.isfile(file):
+      file_path = file
+      file_name = os.path.basename(file_path)
+      with open(file_path, 'r', encoding='utf8') as f:
+        file_text = f.read()
+    
+    else:
+      file_path = 'untitled:untitled'
+      file_name = 'untitled'
+      file_text = file
+      
+    content = '<attachments>'
+    if selection:
+      text = CONTEXT_SELECTION.format(
+        file_name=file_name,
+        type=selection.type or '',
+        line_start=selection.line_start,
+        line_end=selection.line_end,
+        text=selection.text
+      )
+      content += text
+    content += CONTEXT_FILE.format(name=file_name, path=file_path, text=file_text)
+    content += '</attachments>'
+
+    return {
+      'role': 'user',
+      'content': content.strip()
+    }
+  
+  def _expand_user_input(self, messages) -> None:
+    content = messages[-1]['content']
+    messages[-1]['content'] = USER_REQUEST.format(content=content).strip()
+    
+  def get_context_chat_response(self, text: str, selection: Selection, file: str) -> str:
+    '''
+    text: the entire current chat text, initial user request, or full history with user/assistant content
+    selection: currently selected text in the context, text and line numbers, null if no selection
+    file: current context file path, or content of a new tab, not associated with a concrete file
+    '''
+    messages = []
+    messages.append(self._get_system_rules())
+    messages.extend(self._parse_chat_input(text.strip()))
+    
+    # Add context with full file text, selection, before the current user query
+    messages.insert(-1, self._get_context_rule(selection, file))
+    self._expand_user_input(messages)
+    
     result = self._chat_completion(messages)
     result = f'{ASSISTANT_START}\n{result}\n{ASSISTANT_END}'
     return result
@@ -218,6 +265,7 @@ class Copilot:
     
     lines = text.split('\n')
     total = len(lines)
+    
     for i in range(total):
       line = lines[i]
 
@@ -236,10 +284,10 @@ class Copilot:
       
       content += line + '\n'
 
-      if i == total - 1 and content.strip():
-        messages.append({
-          'role': 'user',
-          'content': content.strip()
-        })
+    if content.strip():
+      messages.append({
+        'role': 'user',
+        'content': content.strip()
+      })
     
     return messages

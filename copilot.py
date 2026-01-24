@@ -65,18 +65,22 @@ class Runner(ViewUtilsMixin):
       type = self._detect_code_type()
       self.logger.debug(f'code type: {type}')
       
-      is_selected = True if code.strip() else False
-      
       file_text = view.substr(Region(0, view.size())).strip()
+      is_selected = bool(code.strip())
       
-      code_context = ''
+      selection = None
       if is_selected:
-        code_context = file_text[:sel.a] + SELECTED_CODE_PLACEHOLDER + file_text[sel.b:]
+        line_start = view.rowcol(min(sel.a, sel.b))[0] + 1
+        line_end = view.rowcol(max(sel.a, sel.b))[0] + 1
+        selection = Selection(code, type, line_start, line_end)
+      
+      if is_selected:
+        file_text = file_text[:sel.a] + SELECTED_CODE_PLACEHOLDER + file_text[sel.b:]
       elif file_text:
-        code_context = file_text[:sel.a] + INSERT_PLACEHOLDER + file_text[sel.a:]
+        file_text = file_text[:sel.a] + INSERT_PLACEHOLDER + file_text[sel.a:]
       
       try:
-        result = Copilot().get_code(code, text, code_context, file, type, indent)
+        result = Copilot().get_code(text, selection, file_text, file, type, indent)
       
       except Exception as ex:
         self._handle_exception(ex)
@@ -112,15 +116,14 @@ class Runner(ViewUtilsMixin):
       if not file:
         file = context_view.substr(Region(0, context_view.size()))
       
-      line_start = context_view.rowcol(min(sel.a, sel.b))[0] + 1
-      line_end = context_view.rowcol(max(sel.a, sel.b))[0] + 1
-      
       chat_length = chat_view.size()
       chat_text = chat_view.substr(Region(0, chat_length))
       
       selection = None
       if code.strip():
         type = self._detect_code_type()
+        line_start = context_view.rowcol(min(sel.a, sel.b))[0] + 1
+        line_end = context_view.rowcol(max(sel.a, sel.b))[0] + 1
         selection = Selection(code, type, line_start, line_end)
       
       try:

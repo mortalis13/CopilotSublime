@@ -7,26 +7,40 @@ from dataclasses import dataclass
 import requests
 
 from templates import (
-  ADD_CODE_SYSTEM_RULES, EDIT_CODE_SYSTEM_RULES, EDIT_CODE_CONTEXT_WITH_SELECTION, ADD_CODE_CONTEXT_FILE, CODE_USER_REQUEST,
+  ADD_CODE_SYSTEM_RULES, EDIT_CODE_SYSTEM_RULES, CODE_USER_REQUEST,
   SYSTEM_RULES, CONTEXT_SELECTION, CONTEXT_FILE, USER_REQUEST,
 )
+from utils import get_line_number
 
 MODEL = 'gpt-4.1'
 # gpt-4.1 gpt-4o o1 gpt-4o-mini o1-mini o3-mini
 
 ASSISTANT_START = '[[ ASSISTANT ]]'
 ASSISTANT_END = '[[ #ASSISTANT ]]'
-SELECTED_CODE_PLACEHOLDER = '$SELECTION_PLACEHOLDER$'
-INSERT_PLACEHOLDER = '$PLACEHOLDER$'
 
 storage = {}
 
 @dataclass
 class Selection:
   text: str
+  context: str
   type: str
-  line_start: int
-  line_end: int
+  start: int
+  end: int
+  
+  @property
+  def is_selected(self) -> bool:
+    return bool(self.text.strip())
+  
+  @property
+  def is_empty_context(self) -> bool:
+    return not self.context.strip()
+  
+  def start_line(self) -> int:
+    return get_line_number(self.context, self.start)
+
+  def end_line(self) -> int:
+    return get_line_number(self.context, self.end)
 
 
 class Copilot:
@@ -116,7 +130,7 @@ class Copilot:
     if is_empty_file:
       content = (
         'The user needs help to write some new code.\n'
-        f"Respond only with a code block in {type or 'python'}.\n"
+        f"If no language is specified in the request, respond with a code block in {type or 'python'}.\n"
       )
     
     else:
@@ -142,50 +156,51 @@ class Copilot:
     
     return content.strip()
     
-  def _build_code_request(self, user_request: str, selection: Selection, file_text: str, file: str, type: str) -> str:
-    is_empty_file = not file_text.strip()
-    
-    if is_empty_file:
+  def _build_code_request(self, user_request: str, selection: Selection, file: str) -> str:
+    if selection.is_empty_context:
       return CODE_USER_REQUEST.format(content=user_request).strip()
     
-    if selection:
-      content = EDIT_CODE_CONTEXT_WITH_SELECTION.format(
-        file_path=file,
-        file_text=file_text,
-        selected_text=selection.text,
-        type=type,
+    file_name = os.path.basename(file)
+    
+    content = '<attachments>'
+    if selection.is_selected:
+      text = CONTEXT_SELECTION.format(
+        file_name=file_name,
+        type=selection.type or '',
+        start_line=selection.start_line(),
+        end_line=selection.end_line(),
+        text=selection.text
       )
+      content += text
+    content += CONTEXT_FILE.format(name=file_name, path=file, text=selection.context)
+    content += '</attachments>'
+    
+    if selection.is_selected:
       content += CODE_USER_REQUEST.format(content=user_request)
-      content += 'The modified $SELECTION_PLACEHOLDER$ code without ``` is:'
+      content += f'The modified selected code from position {selection.start} to {selection.end} without ``` is:'
       return content.strip()
       
-    content = ADD_CODE_CONTEXT_FILE.format(file_path=file, file_text=file_text, type=type)
     content += CODE_USER_REQUEST.format(content=user_request)
-    content += 'The code that would fit at $PLACEHOLDER$ without ``` is:'
+    content += f'The code that would fit at position {selection.start} without ``` is:'
     return content.strip()
     
-  def get_code(self, text: str, selection: Selection, file_text: str, file: str, type: str = None, indent: int = None) -> str:
+  def get_code(self, text: str, selection: Selection, file: str, indent: int = None) -> str:
     '''
     text: the user code request
-    selection: currently selected code, null if no selection
-    file_text: full text of the current file or new view
-    file: current context file path, null if no file is associated, as in new view
-    type: code type
+    selection: currently selected text in the context, full text and selected positions in it
+    file: current context file path, or null for a new view
     indent: preferred indentation for the response
     '''
-    is_empty_file = not file_text.strip()
-    is_selected = selection is not None
     file = file or 'untitled'
-    type = type or ''
     
     messages = [
       {
         'role': 'system',
-        'content': self._build_code_system_rules(is_empty_file, is_selected, type, indent)
+        'content': self._build_code_system_rules(selection.is_empty_context, selection.is_selected, selection.type, indent)
       },
       {
         'role': 'user',
-        'content': self._build_code_request(text, selection, file_text, file, type)
+        'content': self._build_code_request(text, selection, file)
       }
     ]
     
@@ -195,28 +210,19 @@ class Copilot:
   # -- Context Chat
   
   def _build_chat_context(self, selection: Selection, file: str) -> str:
-    if os.path.isfile(file):
-      file_path = file
-      file_name = os.path.basename(file_path)
-      with open(file_path, 'r', encoding='utf8') as f:
-        file_text = f.read()
+    file_name = os.path.basename(file)
     
-    else:
-      file_path = 'untitled:untitled'
-      file_name = 'untitled'
-      file_text = file
-      
     content = '<attachments>'
-    if selection:
+    if selection.is_selected:
       text = CONTEXT_SELECTION.format(
         file_name=file_name,
         type=selection.type or '',
-        line_start=selection.line_start,
-        line_end=selection.line_end,
+        start_line=selection.start_line(),
+        end_line=selection.end_line(),
         text=selection.text
       )
       content += text
-    content += CONTEXT_FILE.format(name=file_name, path=file_path, text=file_text)
+    content += CONTEXT_FILE.format(name=file_name, path=file, text=selection.context)
     content += '</attachments>'
 
     return content.strip()
@@ -224,9 +230,11 @@ class Copilot:
   def get_context_chat_response(self, text: str, selection: Selection, file: str) -> str:
     '''
     text: the entire current chat text, initial user request, or full history with user/assistant content
-    selection: currently selected text in the context, text and line numbers, null if no selection
-    file: current context file path, or content of a new view, not associated with a concrete file
+    selection: currently selected text in the context, full text and selected positions in it
+    file: current context file path, or null for a new view
     '''
+    file = file or 'untitled'
+    
     messages = [{
       'role': 'system',
       'content': SYSTEM_RULES.strip()

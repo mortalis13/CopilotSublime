@@ -16,7 +16,7 @@ if cur_path not in sys.path:
 
 import config
 
-from copilot_api import Copilot, Selection, SELECTED_CODE_PLACEHOLDER, INSERT_PLACEHOLDER, ASSISTANT_START, ASSISTANT_END
+from copilot_api import Copilot, Selection, ASSISTANT_START, ASSISTANT_END
 from history import HistoryManager
 from utils import ViewUtilsMixin, extract_code
 
@@ -59,28 +59,18 @@ class Runner(ViewUtilsMixin):
     def run(text: str):
       sel = view.sel()[0]
       code = view.substr(sel)
-      file = view.file_name()
       indent = view.settings().get('tab_size')
+      
+      file = view.file_name()
+      file_text = view.substr(Region(0, view.size()))
       
       type = self._detect_code_type()
       self.logger.debug(f'code type: {type}')
       
-      file_text = view.substr(Region(0, view.size())).strip()
-      is_selected = bool(code.strip())
-      
-      selection = None
-      if is_selected:
-        line_start = view.rowcol(min(sel.a, sel.b))[0] + 1
-        line_end = view.rowcol(max(sel.a, sel.b))[0] + 1
-        selection = Selection(code, type, line_start, line_end)
-      
-      if is_selected:
-        file_text = file_text[:sel.a] + SELECTED_CODE_PLACEHOLDER + file_text[sel.b:]
-      elif file_text:
-        file_text = file_text[:sel.a] + INSERT_PLACEHOLDER + file_text[sel.a:]
+      selection = Selection(code, file_text, type, min(sel.a, sel.b), max(sel.a, sel.b))
       
       try:
-        result = Copilot().get_code(text, selection, file_text, file, type, indent)
+        result = Copilot().get_code(text, selection, file, indent)
       
       except Exception as ex:
         self._handle_exception(ex)
@@ -111,20 +101,14 @@ class Runner(ViewUtilsMixin):
       sel = context_view.sel()[0]
       code = context_view.substr(sel)
       
-      # File path or view content
       file = context_view.file_name()
-      if not file:
-        file = context_view.substr(Region(0, context_view.size()))
+      file_text = context_view.substr(Region(0, context_view.size()))
       
       chat_length = chat_view.size()
       chat_text = chat_view.substr(Region(0, chat_length))
       
-      selection = None
-      if code.strip():
-        type = self._detect_code_type()
-        line_start = context_view.rowcol(min(sel.a, sel.b))[0] + 1
-        line_end = context_view.rowcol(max(sel.a, sel.b))[0] + 1
-        selection = Selection(code, type, line_start, line_end)
+      type = self._detect_code_type()
+      selection = Selection(code, file_text, type, min(sel.a, sel.b), max(sel.a, sel.b))
       
       try:
         result = Copilot().get_context_chat_response(chat_text, selection, file)

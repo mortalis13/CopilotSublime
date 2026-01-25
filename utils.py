@@ -204,3 +204,7 @@ def extract_code(text: str) -> str:
       result.append(line)
   
   return '\n'.join(result)
+
+
+def get_line_number(text: str, position: int) -> int:
+  return text.count('\n', 0, position) + 1

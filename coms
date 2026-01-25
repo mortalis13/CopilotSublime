@@ -15,6 +15,8 @@ view.word(sel)
 view.show_popup('.....')
 view.update_popup('abc')
 view.hide_popup()
+view.set_status('key', 'Loading')
+view.erase_status('key')
 
 v = view.window().new_file()
 v.settings().set('auto_indent', False)

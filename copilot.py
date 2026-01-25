@@ -28,6 +28,9 @@ SETTING_PANEL_HISTORY_KEY = 'panelHistoryKey'
 CHAT_VIEW_NAME = 'Copilot Chat'
 CONTEXT_CHAT_VIEW_NAME = 'Copilot Context Chat'
 
+CHAT_LOADING_MESSAGE = 'Waiting for chat response...'
+CODE_LOADING_MESSAGE = 'Waiting for code generation...'
+
 class ChatType:
   copilot = 'COPILOT_CHAT'
   context = 'CONTEXT_CHAT'
@@ -43,9 +46,6 @@ class Runner(ViewUtilsMixin):
     self.view = view
     self.window = view.window()
     self.logger = config.config_logger()
-    self.loading = False
-    self.loader_text = ''
-    self.error = ''
   
   def __del__(self):
     config.release_logger(self.logger)
@@ -75,17 +75,18 @@ class Runner(ViewUtilsMixin):
       except Exception as ex:
         self._handle_exception(ex)
         return
+      self._hide_status()
 
       result = extract_code(result)
       result = self._reindent(result)
       
-      self.loading = False
       self._insert(result)
       
     def _on_panel(text: str):
       self.logger.info(f'>> "{text}"')
       HistoryManager.add(text, history_key)
-      threading.Thread(target=self._loader).start()
+      
+      self._show_status(CODE_LOADING_MESSAGE)
       threading.Thread(target=run, args=(text,)).start()
     
     input_view = self.window.show_input_panel('Copilot Request: ', '', _on_panel, None, None)
@@ -116,9 +117,8 @@ class Runner(ViewUtilsMixin):
       except Exception as ex:
         self._handle_exception(ex)
         return
+      self._hide_status()
 
-      self.loading = False
-      
       if not result: return
       
       self._insert(f'\n\n\n{result}\n\n\n', chat_view, end=True)
@@ -139,7 +139,7 @@ class Runner(ViewUtilsMixin):
       if self._is_focused_chat_view():
         context_view = self.window.active_view_in_group(0)
       
-      threading.Thread(target=self._loader).start()
+      self._show_status(CHAT_LOADING_MESSAGE)
       threading.Thread(target=run, args=(context_view, chat_view,)).start()
     
     def _on_panel(text: str):
@@ -182,8 +182,8 @@ class Runner(ViewUtilsMixin):
       except Exception as ex:
         self._handle_exception(ex)
         return
+      self._hide_status()
   
-      self.loading = False
       self._insert(f'\n\n\n{result}\n\n\n', end=True)
       
       response_pos = len(chat_text) + 1
@@ -196,12 +196,11 @@ class Runner(ViewUtilsMixin):
       view.set_scratch(True)
       view.set_name(CHAT_VIEW_NAME)
       
-      threading.Thread(target=self._loader).start()
+      self._show_status(CHAT_LOADING_MESSAGE)
       threading.Thread(target=run).start()
     
     def _on_panel(text: str):
       HistoryManager.add(text, history_key)
-      
       self._insert(text, end=True)
       _run_chat()
 
@@ -238,13 +237,14 @@ class Runner(ViewUtilsMixin):
     return chat_input
   
   def _handle_exception(self, exception: Exception) -> None:
+    self._hide_status()
     if isinstance(exception, ConnectionError):
-      self.logger.exception('Connection error')
-      self.error = 'Connection error, try again later'
+      self.logger.exception('Connection error:')
+      self._show_error('Connection error, try again later')
     
     else:
-      self.logger.exception('Generic error')
-      self.error = 'Error getting Copilot response, check the logs'
+      self.logger.exception('Generic error:')
+      self._show_error('Error getting Copilot response, check the logs')
   
   def _create_chat_view(self) -> View:
     chat_view = self.window.new_file(syntax='Packages/Markdown/Markdown.sublime-syntax')

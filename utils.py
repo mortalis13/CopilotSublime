@@ -1,26 +1,10 @@
+import sublime
 from sublime import Region, Edit, View
 
 import re
 import time
 
 import textwrap
-
-LOADER_STYLE = '''
-<style>
-  html {
-    background-color: #303030;
-    border: 1px solid #bbb;
-    border-radius: 1px;
-    margin: 0;
-    padding: 0;
-  }
-  body {
-    margin: 5px 8px;
-    padding: 0;
-    color: #fff;
-  }
-</style>
-'''
 
 ERROR_POPUP_STYLE = '''
 <style>
@@ -91,36 +75,18 @@ class ViewUtilsMixin:
     
     return text
   
-  def _loader(self) -> None:
-    def _show_loader(text: str):
-      self.view.show(self.view.sel())
-      if not self.view.is_popup_visible():
-        self.view.show_popup(text, max_width=1000)
-      else:
-        self.view.update_popup(text)
-    
-    self.loading = True
-  
-    while self.loading:
-      if self.error:
-        _show_loader(ERROR_POPUP_STYLE + self.error)
-        return
-      
-      self.loader_text += '•'
-      if len(self.loader_text) > 3:
-        self.loader_text = ''
-      
-      text = self.loader_text
-      if len(text) < 3:
-        text += (3 - len(text)) * ' '
-      
-      text = text.replace(' ', '&nbsp;')
-      _show_loader(LOADER_STYLE + text)
-      
-      time.sleep(0.2)
+  def _show_error(self, text: str) -> None:
+    self._show_popup(ERROR_POPUP_STYLE + text)
 
-    self.view.hide_popup()
-  
+  def _show_popup(self, text: str) -> None:
+    self.view.show_popup(text, max_width=1000)
+
+  def _show_status(self, text: str) -> None:
+    self.view.set_status('copilot_status', text)
+
+  def _hide_status(self) -> None:
+    self.view.erase_status('copilot_status')
+
   def _detect_code_type(self) -> str:
     view_scope = self.view.syntax().scope.lower()
     

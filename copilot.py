@@ -18,7 +18,7 @@ import config
 
 from copilot_api import Copilot, Selection, ASSISTANT_START, ASSISTANT_END
 from history import HistoryManager
-from utils import ViewUtilsMixin, extract_code
+from utils import ViewUtilsMixin, extract_code, reset_view_settings
 
 
 SETTING_CHAT_VIEW_ID = 'CONTEXT_CHAT_VIEW_ID'
@@ -90,6 +90,9 @@ class Runner(ViewUtilsMixin):
       threading.Thread(target=run, args=(text,)).start()
     
     input_view = self.window.show_input_panel('Copilot Request: ', '', _on_panel, None, None)
+    # The view instance is shared between plugins which could capture the keys commands
+    # Removing all settings removes all outside keys
+    reset_view_settings(input_view.settings())
     input_view.settings().set(SETTING_IS_COPILOT_PANEL, True)
     self.window.settings().set(SETTING_PANEL_HISTORY_KEY, history_key)
 
@@ -163,6 +166,7 @@ class Runner(ViewUtilsMixin):
     
     if open_panel:
       input_view = self.window.show_input_panel('Copilot Context Request: ', '', _on_panel, None, None)
+      reset_view_settings(input_view.settings())
       input_view.settings().set(SETTING_IS_COPILOT_PANEL, True)
       self.window.settings().set(SETTING_PANEL_HISTORY_KEY, history_key)
 
@@ -207,6 +211,7 @@ class Runner(ViewUtilsMixin):
     chat_input = self._find_chat_request(self.view)
     if not chat_input:
       input_view = self.window.show_input_panel('Copilot Chat Request: ', '', _on_panel, None, None)
+      reset_view_settings(input_view.settings())
       input_view.settings().set(SETTING_IS_COPILOT_PANEL, True)
       self.window.settings().set(SETTING_PANEL_HISTORY_KEY, history_key)
     

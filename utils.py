@@ -1,5 +1,5 @@
 import sublime
-from sublime import Region, Edit, View
+from sublime import Region, Edit, View, Settings
 
 import re
 import time
@@ -149,6 +149,11 @@ class ViewUtilsMixin:
         return language
     
     return None
+
+
+def reset_view_settings(settings: Settings) -> None:
+  for key in settings.to_dict():
+      settings.erase(key)
 
 
 def extract_code(text: str) -> str:

@@ -4,7 +4,6 @@ from sublime import Region, Edit, View
 
 import sys
 import os
-import re
 import time
 import threading
 
@@ -75,12 +74,13 @@ class Runner(ViewUtilsMixin):
       except Exception as ex:
         self._handle_exception(ex)
         return
-      self._hide_status()
+      finally:
+        self._hide_status()
 
       result = extract_code(result)
       result = self._reindent(result)
       
-      self._insert(result)
+      self._insert(result.strip())
       
     def _on_panel(text: str):
       self.logger.info(f'>> "{text}"')
@@ -120,7 +120,8 @@ class Runner(ViewUtilsMixin):
       except Exception as ex:
         self._handle_exception(ex)
         return
-      self._hide_status()
+      finally:
+        self._hide_status()
 
       if not result: return
       
@@ -186,7 +187,8 @@ class Runner(ViewUtilsMixin):
       except Exception as ex:
         self._handle_exception(ex)
         return
-      self._hide_status()
+      finally:
+        self._hide_status()
   
       self._insert(f'\n\n\n{result}\n\n\n', end=True)
       
@@ -242,7 +244,6 @@ class Runner(ViewUtilsMixin):
     return chat_input
   
   def _handle_exception(self, exception: Exception) -> None:
-    self._hide_status()
     if isinstance(exception, ConnectionError):
       self.logger.exception('Connection error:')
       self._show_error('Connection error, try again later')
@@ -266,10 +267,6 @@ class Runner(ViewUtilsMixin):
   def _is_focused_chat_view(self) -> bool:
     chat_view_id = self.window.settings().get(SETTING_CHAT_VIEW_ID)
     return self.view.id() == chat_view_id
-  
-  def _split_view(self) -> None:
-    if self.window.num_groups() == 1:
-      self.window.set_layout({'cells': [[0, 0, 1, 1], [1, 0, 2, 1]], 'cols': [0.0, 0.5, 1.0], 'rows': [0.0, 1.0]})
   
   def _chat_type(self):
     view = self.view

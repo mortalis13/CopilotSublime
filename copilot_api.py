@@ -7,13 +7,14 @@ from dataclasses import dataclass
 import requests
 
 from templates import (
-  ADD_CODE_SYSTEM_RULES, EDIT_CODE_SYSTEM_RULES, CODE_USER_REQUEST,
+  ADD_CODE_SYSTEM_RULES, EDIT_CODE_SYSTEM_RULES, NEW_CODE_SYSTEM_RULES, CODE_USER_REQUEST, PYTHON_RULES, JAVA_RULES,
   SYSTEM_RULES, CONTEXT_SELECTION, CONTEXT_FILE, USER_REQUEST,
 )
 from utils import get_line_number
 
 MODEL = 'gpt-4.1'
-# gpt-4.1 gpt-4o o1 gpt-4o-mini o1-mini o3-mini
+# gpt-4.1 gpt-4o gpt-4o-mini
+EDITOR_VERSION = 'vscode/1.108.2'
 
 ASSISTANT_START = '[[ ASSISTANT ]]'
 ASSISTANT_END = '[[ #ASSISTANT ]]'
@@ -58,7 +59,7 @@ class Copilot:
     
     headers = {
       'authorization': f'token {access_token}',
-      'editor-version': 'vscode/1.95.3',
+      'editor-version': EDITOR_VERSION,
     }
     url = 'https://api.github.com/copilot_internal/v2/token'
     
@@ -73,7 +74,7 @@ class Copilot:
     
     headers = {
       'authorization': f'Bearer {token}',
-      'editor-version': 'vscode/1.95.3',
+      'editor-version': EDITOR_VERSION,
     }
     
     url = 'https://api.githubcopilot.com/chat/completions'
@@ -132,11 +133,7 @@ class Copilot:
   
   def _build_code_system_rules(self, is_empty_file: bool, is_selected: bool, type: str, indent: int) -> str:
     if is_empty_file:
-      content = (
-        'The user needs help to write some new code.\n'
-        f"If no language is specified in the request, respond with a code block in {type or 'python'}.\n"
-      )
-    
+      content = NEW_CODE_SYSTEM_RULES.format(type=type or 'python')
     else:
       content = EDIT_CODE_SYSTEM_RULES if is_selected else ADD_CODE_SYSTEM_RULES
       
@@ -144,19 +141,9 @@ class Copilot:
       content += f'Use indentation equal to {indent} spaces.\n'
     
     if type == 'python':
-      content += (
-        'Generate docstrings for new methods only.\n'
-        'If an existing method does not have a docstring, leave it without a docstring\n'
-        'If only docstring is requested, do not repeat given code, only reply with docstring wrapped in """.\n'
-        'Always add type hints to the methods signatures using Python 3.10 built-in types rather that the typing library.\n'
-        'Use single quotes for strings.\n'
-      )
-    
+      content += PYTHON_RULES
     if type == 'java':
-      content += (
-        'Add proper javadoc comments for methods signatures.\n'
-        'In the multi-block structures, like "if-else", "try-catch" etc., the start of each block should be on its own line, as in ```if (condition) {\n}\nelse {\n}\nelse{\n}\n```.\n'
-      )
+      content += JAVA_RULES
     
     return content.strip()
     
@@ -189,12 +176,12 @@ class Copilot:
     return content.strip()
     
   def get_code(self, text: str, selection: Selection, file: str, indent: int = None) -> str:
-    '''
+    """
     text: the user code request
     selection: currently selected text in the context, full text and selected positions in it
     file: current context file path, or null for a new view
     indent: preferred indentation for the response
-    '''
+    """
     file = file or 'untitled'
     
     messages = [
@@ -232,11 +219,11 @@ class Copilot:
     return content.strip()
   
   def get_context_chat_response(self, text: str, selection: Selection, file: str) -> str:
-    '''
+    """
     text: the entire current chat text, initial user request, or full history with user/assistant content
     selection: currently selected text in the context, full text and selected positions in it
     file: current context file path, or null for a new view
-    '''
+    """
     file = file or 'untitled'
     
     messages = [{

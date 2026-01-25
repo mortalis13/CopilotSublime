@@ -1,9 +1,7 @@
 import sublime
-from sublime import Region, Edit, View, Settings
+from sublime import Region, Edit, View, Window, Settings
 
 import re
-import time
-
 import textwrap
 
 ERROR_POPUP_STYLE = '''
@@ -24,6 +22,7 @@ ERROR_POPUP_STYLE = '''
 
 class ViewUtilsMixin:
   view: View
+  window: Window
   
   def _insert(self, text: str, view: View = None, end: bool = False) -> None:
     view = view or self.view
@@ -74,6 +73,10 @@ class ViewUtilsMixin:
       text = text.lstrip()
     
     return text
+  
+  def _split_view(self) -> None:
+    if self.window.num_groups() == 1:
+      self.window.set_layout({'cells': [[0, 0, 1, 1], [1, 0, 2, 1]], 'cols': [0.0, 0.5, 1.0], 'rows': [0.0, 1.0]})
   
   def _show_error(self, text: str) -> None:
     self._show_popup(ERROR_POPUP_STYLE + text)

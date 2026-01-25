@@ -111,6 +111,10 @@ class Copilot:
       'n': 1,
     }
     
+    for message in body['messages']:
+      if message['role'] in ['system', 'user']:
+        message['copilot_cache_control'] = {'type': 'ephemeral'}
+    
     data = self._send_request(body)
     
     result = None

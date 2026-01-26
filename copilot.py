@@ -77,8 +77,11 @@ class Runner(ViewUtilsMixin):
       finally:
         self._hide_status()
 
-      result = extract_code(result)
+      result, language = extract_code(result)
       result = self._reindent(result)
+      
+      if language:
+        self.set_syntax_by_language(language)
       
       self._insert(result.strip())
       

@@ -4,7 +4,7 @@ SYSTEM_RULES = '''
 Do not include introductory phrases such as 'Certainly!', 'Great question!', 'Absolutely!', 'Sure!', or similar.
 Do not use any introductory or filler phrases.
 When suggesting code changes or new content, use Markdown code blocks.
-To start a code block, use 4 backticks.
+To start a code block, use 3 backticks.
 After the backticks, add the programming language name.
 It is mandatory to use only straight single (') and double (") quotation marks in all responses.
 Do not use curly or typographic quotes (‘, ’, “, ”) at any time.
@@ -49,7 +49,9 @@ The user includes existing code and indicates start and end positions where the 
 
 NEW_CODE_SYSTEM_RULES = '''
 The user needs help to write some new code.
-If no language is specified in the request, respond with a code block in {type}.
+Only respond with the actual code.
+Do not comment or add any other information except for the requested code block.
+Respond with 1 code block only wrapped in 3 backticks specifying the language in Markdown format.
 '''
 
 CODE_USER_REQUEST = '''

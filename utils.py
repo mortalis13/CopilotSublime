@@ -152,32 +152,33 @@ class ViewUtilsMixin:
         return language
     
     return None
+  
+  def set_syntax_by_language(self, language: str) -> None:
+    language = language.strip()
+    syntax = next((item for item in sublime.list_syntaxes() if item.name.lower() == language.lower()), None)
+    if not syntax: return
+    self.view.assign_syntax(syntax.path)
 
 
 def reset_view_settings(settings: Settings) -> None:
   for key in settings.to_dict():
-      settings.erase(key)
+    settings.erase(key)
 
 
 def extract_code(text: str) -> str:
-  if not re.search('^```', text, re.MULTILINE):
-    return text
-  
-  result = []
-  in_block = False
-  
-  lines = text.split('\n')
-  for line in lines:
-    if line == '```':
-      in_block = False
-    elif line.startswith('```'):
-      in_block = True
-      continue
-    
-    if in_block:
-      result.append(line)
-  
-  return '\n'.join(result)
+  """
+  Get code from Markdown blocks
+  Works with ```language, with ``` only
+  Merges multiple blocks
+  Returns the first language if present
+  """
+  pattern = r'```([^\n]*)\n(.*?)\n```'
+  matches = re.findall(pattern, text.strip(), re.DOTALL)
+  if not matches:
+    return text.strip()
+  lang = matches[0][0].strip()
+  code = '\n'.join([code.strip() for _, code in matches])
+  return code, lang
 
 
 def get_line_number(text: str, position: int) -> int:

@@ -133,7 +133,7 @@ class Copilot:
   
   def _build_code_system_rules(self, is_empty_file: bool, is_selected: bool, type: str, indent: int) -> str:
     if is_empty_file:
-      content = NEW_CODE_SYSTEM_RULES.format(type=type or 'python')
+      content = NEW_CODE_SYSTEM_RULES
     else:
       content = EDIT_CODE_SYSTEM_RULES if is_selected else ADD_CODE_SYSTEM_RULES
       

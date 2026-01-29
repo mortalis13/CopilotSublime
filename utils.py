@@ -175,10 +175,10 @@ def extract_code(text: str) -> str:
   pattern = r'```([^\n]*)\n(.*?)\n```'
   matches = re.findall(pattern, text.strip(), re.DOTALL)
   if not matches:
-    return text.strip()
-  lang = matches[0][0].strip()
+    return text.strip(), None
+  language = matches[0][0].strip()
   code = '\n'.join([code.strip() for _, code in matches])
-  return code, lang
+  return code, language
 
 
 def get_line_number(text: str, position: int) -> int:

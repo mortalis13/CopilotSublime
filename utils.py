@@ -84,11 +84,13 @@ class ViewUtilsMixin:
   def _show_popup(self, text: str) -> None:
     self.view.show_popup(text, max_width=1000)
 
-  def _show_status(self, text: str) -> None:
-    self.view.set_status('copilot_status', text)
+  def _show_status(self, text: str, view: View = None) -> None:
+    view = view or self.view
+    view.set_status('copilot_status', text)
 
-  def _hide_status(self) -> None:
-    self.view.erase_status('copilot_status')
+  def _hide_status(self, view: View = None) -> None:
+    view = view or self.view
+    view.erase_status('copilot_status')
 
   def _detect_code_type(self) -> str:
     view_scope = self.view.syntax().scope.lower()

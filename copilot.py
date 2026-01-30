@@ -126,6 +126,7 @@ class Runner(ViewUtilsMixin):
         return
       finally:
         self._hide_status()
+        self._hide_status(chat_view)
 
       if not result: return
       
@@ -148,6 +149,7 @@ class Runner(ViewUtilsMixin):
         context_view = self.window.active_view_in_group(0)
       
       self._show_status(CHAT_LOADING_MESSAGE)
+      self._show_status(CHAT_LOADING_MESSAGE, chat_view)
       threading.Thread(target=run, args=(context_view, chat_view,)).start()
     
     def _on_panel(text: str):

@@ -87,7 +87,8 @@ class Runner(ViewUtilsMixin):
       
     def _on_panel(text: str):
       self.logger.info(f'>> "{text}"')
-      HistoryManager.add(text, history_key)
+      if text.strip():
+        HistoryManager.add(text, history_key)
       
       self._show_status(CODE_LOADING_MESSAGE)
       threading.Thread(target=run, args=(text,)).start()
@@ -151,7 +152,8 @@ class Runner(ViewUtilsMixin):
     
     def _on_panel(text: str):
       self.logger.info(f'>> "{text}"')
-      HistoryManager.add(text, history_key)
+      if text.strip():
+        HistoryManager.add(text, history_key)
       
       chat_view = self._get_chat_view()
       self._insert(text, chat_view, end=True)
@@ -209,7 +211,8 @@ class Runner(ViewUtilsMixin):
       threading.Thread(target=run).start()
     
     def _on_panel(text: str):
-      HistoryManager.add(text, history_key)
+      if text.strip():
+        HistoryManager.add(text, history_key)
       self._insert(text, end=True)
       _run_chat()
 

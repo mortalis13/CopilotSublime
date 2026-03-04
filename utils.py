@@ -96,6 +96,9 @@ class ViewUtilsMixin:
     view_scope = self.view.syntax().scope.lower()
     
     scopes = {
+      'text.plain': None,
+      'text.html.markdown': None,
+      
       'source.actionscript': 'as',
       'source.applescript': 'applescript',
       'source.asp': 'asp',
@@ -133,7 +136,6 @@ class ViewUtilsMixin:
       'text.haml': 'haml',
       'text.html.basic': 'html',
       'text.html.jsp': 'jsp',
-      'text.html.markdown': 'markdown',
       'text.html.vue': 'vue',
 
       'source.d': 'd',

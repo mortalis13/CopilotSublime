@@ -20,6 +20,8 @@ from history import HistoryManager
 from utils import ViewUtilsMixin, extract_code, reset_view_settings
 
 
+SYNTAX_MARKDOWN = 'Packages/Markdown/Markdown.sublime-syntax'
+
 SETTING_CHAT_VIEW_ID = 'CONTEXT_CHAT_VIEW_ID'
 SETTING_IS_COPILOT_PANEL = 'isCopilotPanel'
 SETTING_PANEL_HISTORY_KEY = 'panelHistoryKey'
@@ -30,15 +32,13 @@ CONTEXT_CHAT_VIEW_NAME = 'Copilot Context Chat'
 CHAT_LOADING_MESSAGE = 'Waiting for chat response...'
 CODE_LOADING_MESSAGE = 'Waiting for code generation...'
 
-class ChatType:
-  copilot = 'COPILOT_CHAT'
-  context = 'CONTEXT_CHAT'
-
-
 # Clear the last chat ID on plugin loading
 for window in sublime.windows():
   window.settings().erase(SETTING_CHAT_VIEW_ID)
 
+class ChatType:
+  copilot = 'COPILOT_CHAT'
+  context = 'CONTEXT_CHAT'
 
 class Runner(ViewUtilsMixin):
   def __init__(self, view):
@@ -205,7 +205,7 @@ class Runner(ViewUtilsMixin):
       view.show(response_pos)
     
     def _run_chat():
-      view.assign_syntax('Packages/Markdown/Markdown.sublime-syntax')
+      view.assign_syntax(SYNTAX_MARKDOWN)
       view.set_scratch(True)
       view.set_name(CHAT_VIEW_NAME)
       
@@ -261,7 +261,7 @@ class Runner(ViewUtilsMixin):
       self._show_error('Error getting Copilot response, check the logs')
   
   def _create_chat_view(self) -> View:
-    chat_view = self.window.new_file(syntax='Packages/Markdown/Markdown.sublime-syntax')
+    chat_view = self.window.new_file(syntax=SYNTAX_MARKDOWN)
     chat_view.set_scratch(True)
     chat_view.set_name(CONTEXT_CHAT_VIEW_NAME)
     self.window.settings().set(SETTING_CHAT_VIEW_ID, chat_view.id())

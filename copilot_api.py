@@ -13,7 +13,6 @@ from templates import (
 from utils import get_line_number
 
 MODEL = 'gpt-4.1'
-# gpt-4.1 gpt-4o gpt-4o-mini
 EDITOR_VERSION = 'vscode/1.108.2'
 
 ASSISTANT_START = '[[ ASSISTANT ]]'

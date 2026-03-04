@@ -64,7 +64,7 @@ PYTHON_RULES = '''
 Add docstrings only to completely new methods that did not exist in the original code.
 Do not add or modify docstrings for any existing methods, even if they are changed or do not have a docstring.
 If only the docstring is requested, reply with the docstring wrapped in triple double quotes (""").
-Always add type hints to the methods signatures using Python 3.10 built-in types rather that the typing library.
+Always add type hints to the methods signatures using Python 3.10 built-in types rather than the typing library.
 Use single quotes for all strings.
 '''
 

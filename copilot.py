@@ -13,6 +13,7 @@ cur_path = os.path.dirname(__file__)
 if cur_path not in sys.path:
   sys.path.insert(0, cur_path)
 
+# Local modules
 import config
 
 from copilot_api import Copilot, Selection, ASSISTANT_START, ASSISTANT_END
@@ -32,9 +33,6 @@ CONTEXT_CHAT_VIEW_NAME = 'Copilot Context Chat'
 CHAT_LOADING_MESSAGE = 'Waiting for chat response...'
 CODE_LOADING_MESSAGE = 'Waiting for code generation...'
 
-# Clear the last chat ID on plugin loading
-for window in sublime.windows():
-  window.settings().erase(SETTING_CHAT_VIEW_ID)
 
 class ChatType:
   copilot = 'COPILOT_CHAT'

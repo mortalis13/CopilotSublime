@@ -1,7 +1,8 @@
 [
   { "keys": ["ctrl+i"], "command": "copilot_inline" },
   { "keys": ["ctrl+shift+i"], "command": "copilot_chat" },
-  
+  { "keys": ["ctrl+shift+m"], "command": "copilot_select_model" },
+
   {
     "keys": ["up"], "context": [{ "key": "setting.isCopilotPanel", "operator": "equal", "operand": true }],
     "command": "get_copilot_history_entry",

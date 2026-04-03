@@ -3,6 +3,8 @@ from sublime import Region, Edit, View, Window, Settings
 
 import re
 import textwrap
+import json
+import base64
 
 ERROR_POPUP_STYLE = '''
 <style>
@@ -187,3 +189,21 @@ def extract_code(text: str) -> str:
 
 def get_line_number(text: str, position: int) -> int:
   return text.count('\n', 0, position) + 1
+
+
+def decode_jwt(value: str) -> dict:
+  if '.' not in value: return None
+  parts = value.split('.')
+  if len(parts) != 3: return None
+  
+  payload = parts[1]
+  padding = 4 - (len(payload) % 4)
+  if padding != 4:
+    payload += '=' * padding
+  
+  try:
+    data = json.loads(base64.b64decode(payload))
+  except:
+    return None
+  
+  return data

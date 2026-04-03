@@ -1,4 +1,5 @@
 [
   { "caption": "Copilot: Code Completion", "command": "copilot_inline" },
-  { "caption": "Copilot: Chat", "command": "copilot_chat"},
+  { "caption": "Copilot: Chat", "command": "copilot_chat" },
+  { "caption": "Copilot: Select Model", "command": "copilot_select_model" },
 ]

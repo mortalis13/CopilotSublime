@@ -1,0 +1,11 @@
+{
+  "model": "",
+  "token": "",
+
+  // Optional
+  "use_proxy": false,
+
+  "url": "",
+  "claude_api_version": "",
+  "jetbrains_license": "",
+}

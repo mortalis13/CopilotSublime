@@ -13,13 +13,23 @@ cur_path = os.path.dirname(__file__)
 if cur_path not in sys.path:
   sys.path.insert(0, cur_path)
 
-# Local modules
 import config
 
-from copilot_api import Copilot, Selection, ASSISTANT_START, ASSISTANT_END
+from copilot_api import CopilotApi, Selection, ASSISTANT_START, ASSISTANT_END
+from copilot_claude_api import CopilotClaudeApi as ClaudeApi
+from copilot_gpt_api import CopilotGptApi as GptApi
+from copilot_gemini_api import CopilotGeminiApi as GeminiApi
+from copilot_github_api import CopilotGithubApi as GithubApi
+from copilot_jb_api import (
+  CopilotClaudeJbApi as ProxyClaudeApi,
+  CopilotGptJbApi as ProxyGptApi,
+  CopilotGeminiJbApi as ProxyGeminiApi,
+  CopilotJbApi
+)
 from history import HistoryManager
 from utils import ViewUtilsMixin, extract_code, reset_view_settings
 
+SETTINGS_FILE = 'Copilot.sublime-settings'
 
 SYNTAX_MARKDOWN = 'Packages/Markdown/Markdown.sublime-syntax'
 
@@ -32,7 +42,25 @@ CONTEXT_CHAT_VIEW_NAME = 'Copilot Context Chat'
 
 CHAT_LOADING_MESSAGE = 'Waiting for chat response...'
 CODE_LOADING_MESSAGE = 'Waiting for code generation...'
+MODELS_LOADING_MESSAGE = 'Loading {provider} models...'
 
+PROVIDERS = [
+  'Anthropic',
+  'OpenAI',
+  'Google',
+  'GitHub',
+  'JetBrains',
+]
+
+CLAUDE_MODEL_PREFIX = 'claude-'
+GEMINI_MODEL_PREFIX = 'gemini-'
+GPT_MODEL_PREFIXES = ['gpt-', 'o1-', 'o3-', 'o4-']
+GITHUB_MODEL_PREFIX = 'gh-'
+JB_MODEL_PREFIX = 'jb-'
+
+# Clear the last chat ID on plugin loading
+for window in sublime.windows():
+  window.settings().erase(SETTING_CHAT_VIEW_ID)
 
 class ChatType:
   copilot = 'COPILOT_CHAT'
@@ -43,9 +71,69 @@ class Runner(ViewUtilsMixin):
     self.view = view
     self.window = view.window()
     self.logger = config.config_logger()
+    self.settings = sublime.load_settings(SETTINGS_FILE)
+    self.copilot_api = self._select_client()
   
   def __del__(self):
     config.release_logger(self.logger)
+  
+  def _select_client(self) -> CopilotApi:
+    use_proxy = self.settings.get('use_proxy')
+    model = self.settings.get('model')
+
+    if not model: return None
+
+    CopilotApi.model = model
+    CopilotApi.token = self.settings.get('token')
+    CopilotApi.url = self.settings.get('url')
+    CopilotJbApi.license = self.settings.get('jetbrains_license')
+    
+    if model.startswith(CLAUDE_MODEL_PREFIX):
+      if use_proxy:
+        return ProxyClaudeApi()
+      
+      claude_api_version = self.settings.get('claude_api_version')
+      if claude_api_version:
+        ClaudeApi.api_version = claude_api_version
+      return ClaudeApi()
+    
+    if any(model.startswith(prefix) for prefix in GPT_MODEL_PREFIXES):
+      return ProxyGptApi() if use_proxy else GptApi()
+      
+    if model.startswith(GEMINI_MODEL_PREFIX):
+      return ProxyGeminiApi() if use_proxy else GeminiApi()
+    
+    if model.startswith(GITHUB_MODEL_PREFIX):
+      CopilotApi.model = model.replace(GITHUB_MODEL_PREFIX, '')
+      return GithubApi()
+    
+    if model.startswith(JB_MODEL_PREFIX):
+      CopilotApi.model = model.replace(JB_MODEL_PREFIX, '')
+      return CopilotJbApi()
+    
+    return None
+  
+  def _select_provider_class(self, name: str):
+    use_proxy = self.settings.get('use_proxy')
+    
+    if name == 'Anthropic':
+      if use_proxy:
+        return ProxyClaudeApi
+    
+      claude_api_version = self.settings.get('claude_api_version')
+      if claude_api_version:
+        ClaudeApi.api_version = claude_api_version
+      return ClaudeApi
+    
+    if name == 'OpenAI':
+      return ProxyGptApi if use_proxy else GptApi
+    if name == 'Google':
+      return ProxyGeminiApi if use_proxy else GeminiApi
+    if name == 'GitHub':
+      return GithubApi
+    if name == 'JetBrains':
+      return CopilotJbApi
+    return None
   
   def inline_code_command(self) -> None:
     view = self.view
@@ -67,7 +155,7 @@ class Runner(ViewUtilsMixin):
       selection = Selection(code, file_text, type, min(sel.a, sel.b), max(sel.a, sel.b))
       
       try:
-        result = Copilot().get_code(text, selection, file, indent)
+        result = self.copilot_api.get_code(text, selection, file, indent)
       
       except Exception as ex:
         self._handle_exception(ex)
@@ -117,7 +205,7 @@ class Runner(ViewUtilsMixin):
       selection = Selection(code, file_text, type, min(sel.a, sel.b), max(sel.a, sel.b))
       
       try:
-        result = Copilot().get_context_chat_response(chat_text, selection, file)
+        result = self.copilot_api.get_context_chat_response(chat_text, selection, file)
       
       except Exception as ex:
         self._handle_exception(ex)
@@ -187,7 +275,7 @@ class Runner(ViewUtilsMixin):
       chat_text = view.substr(Region(0, view.size()))
       
       try:
-        result = Copilot().get_chat_response(chat_text)
+        result = self.copilot_api.get_chat_response(chat_text)
       
       except Exception as ex:
         self._handle_exception(ex)
@@ -235,6 +323,59 @@ class Runner(ViewUtilsMixin):
     if chat_type == ChatType.context:
       self._run_context_chat()
 
+
+  def select_model_command(self) -> None:
+    def _selector_executor():
+      # Provider handler
+      def _on_provider_select(provider_index: int) -> None:
+        if provider_index == -1: return
+        provider = PROVIDERS[provider_index]
+        CopilotClass = self._select_provider_class(provider)
+        
+        # Thread
+        def _load_models():
+          try:
+            models = CopilotClass.get_models()
+            self.logger.info(models)
+          except Exception as ex:
+            self.logger.exception(ex)
+            models = []
+          items = [f'<  ({provider})'] + models
+          
+          # Model handler
+          def _on_model_select(model_index: int) -> None:
+            if model_index == -1: return
+            if model_index == 0:
+              _selector_executor()  # Back
+              return
+
+            model = items[model_index]
+            if provider == 'GitHub':
+              model = GITHUB_MODEL_PREFIX + model
+            if provider == 'JetBrains':
+              model = JB_MODEL_PREFIX + model
+            
+            self.settings.set('model', model)
+            sublime.save_settings(SETTINGS_FILE)
+          
+          self._hide_status()
+          selected = next((items.index(item) for item in items
+            if self.copilot_api and item == self.copilot_api.model
+          ), -1)
+          
+          self.window.show_quick_panel(items, _on_model_select, selected_index=selected)
+      
+        self._show_status(MODELS_LOADING_MESSAGE.format(provider=provider))
+        threading.Thread(target=_load_models).start()
+      
+      selected = next((PROVIDERS.index(item) for item in PROVIDERS
+        if self.copilot_api and self._select_provider_class(item) == self.copilot_api.__class__
+      ), -1)
+      
+      self.window.show_quick_panel(PROVIDERS, _on_provider_select, selected_index=selected)
+    
+    _selector_executor()
+  
 
   def _find_chat_request(self, chat_view: View) -> str:
     chat_lines = []
@@ -308,6 +449,11 @@ class CopilotInlineCommand(sublime_plugin.TextCommand):
 class CopilotChatCommand(sublime_plugin.TextCommand):
   def run(self, edit):
     Runner(self.view).chat_command()
+  
+
+class CopilotSelectModelCommand(sublime_plugin.TextCommand):
+  def run(self, edit):
+    Runner(self.view).select_model_command()
   
 
 class ViewListener(sublime_plugin.ViewEventListener):

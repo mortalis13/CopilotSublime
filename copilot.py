@@ -72,21 +72,23 @@ class Runner(ViewUtilsMixin):
     self.window = view.window()
     self.logger = config.config_logger()
     self.settings = sublime.load_settings(SETTINGS_FILE)
+    self._init_api()
     self.copilot_api = self._select_client()
   
   def __del__(self):
     config.release_logger(self.logger)
   
-  def _select_client(self) -> CopilotApi:
-    use_proxy = self.settings.get('use_proxy')
-    model = self.settings.get('model')
-
-    if not model: return None
-
-    CopilotApi.model = model
+  def _init_api(self) -> None:
+    CopilotApi.model = self.settings.get('model')
     CopilotApi.token = self.settings.get('token')
     CopilotApi.url = self.settings.get('url')
     CopilotJbApi.license = self.settings.get('jetbrains_license')
+    
+  def _select_client(self) -> CopilotApi:
+    if not CopilotApi.model: return None
+
+    model = CopilotApi.model
+    use_proxy = self.settings.get('use_proxy')
     
     if model.startswith(CLAUDE_MODEL_PREFIX):
       if use_proxy:

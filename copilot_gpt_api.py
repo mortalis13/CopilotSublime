@@ -7,11 +7,18 @@ from copilot_api import CopilotApi, Selection, ASSISTANT_START, ASSISTANT_END
 from templates import SYSTEM_RULES
 
 class CopilotGptApi(CopilotApi):
-  URL = 'https://api.openai.com/v1/chat/completions'
+  RESPONSES_URL = 'https://api.openai.com/v1/responses'
+  COMPLETIONS_URL = 'https://api.openai.com/v1/chat/completions'
   
   def __init__(self):
     super().__init__()
-    self.url = self.url or self.URL
+    
+    if not self.url:
+      self.url = self.RESPONSES_URL
+      if 'gpt-4' in self.model:
+        self.url = self.COMPLETIONS_URL
+    
+    self.is_responses = '/responses' in self.url
   
   def get_code(self, text: str, selection: Selection, file: str, indent: int = None) -> str:
     messages = self._build_code_rules(text, selection, file, indent)
@@ -60,13 +67,16 @@ class CopilotGptApi(CopilotApi):
   
   def __chat_completion(self, messages: list) -> str:
     body = {
-      'messages': messages,
+      'input': messages,
       'model': self.model,
-      'n': 1,
     }
-    
-    if self.__supports_temperature():
-      body.update({'temperature': 0})
+
+    if not self.is_responses:
+      body = {
+        'messages': messages,
+        'model': self.model,
+        'n': 1,
+      }
     
     text = self._send_request(body)
     result = self.__parse_response(text)
@@ -75,20 +85,30 @@ class CopilotGptApi(CopilotApi):
     return result
   
   def __parse_response(self, text: str) -> str:
+    result = text
+    
     try:
       data = json.loads(text)
     except json.JSONDecodeError:
       self.logger.error(f'Response JSON parse error')
-      return text
+      return result
 
-    if data.get('choices'):
-      try:
+    try:
+      if data.get('output'):
+        texts = []
+        for output in data['output']:
+          if output['type'] != 'message': continue
+          
+          for content in output['content']:
+            if content['type'] != 'output_text': continue
+            texts.append(content['text'])
+        
+        result = ''.join(texts)
+
+      elif data.get('choices'):
         result = data['choices'][0]['message']['content']
-      except KeyError as ex:
-        self.logger.error(f'Response parse key error: {ex}')
-        return text
+    
+    except KeyError as ex:
+      self.logger.error(f'Response parse key error: {ex}')
     
     return result
-  
-  def __supports_temperature(self) -> bool:
-    return not any(self.model.startswith(prefix) for prefix in ['gpt-5-', 'o1-', 'o3-', 'o4-'])

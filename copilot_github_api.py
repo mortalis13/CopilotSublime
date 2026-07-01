@@ -8,14 +8,21 @@ from copilot_api import CopilotApi, TokenManager, Selection, ASSISTANT_START, AS
 from templates import SYSTEM_RULES
 
 class CopilotGithubApi(CopilotApi):
-  URL = 'https://api.githubcopilot.com/chat/completions'
+  RESPONSES_URL = 'https://api.githubcopilot.com/responses'
+  COMPLETIONS_URL = 'https://api.githubcopilot.com/chat/completions'
   
   EDITOR_VERSION = 'vscode/1.108.2'
   TOKEN_CACHE_KEY = 'github_copilot_token'
   
   def __init__(self):
     super().__init__()
-    self.url = self.url or self.URL
+    
+    if not self.url:
+      self.url = self.RESPONSES_URL
+      if 'gpt-4' in self.model:
+        self.url = self.COMPLETIONS_URL
+    
+    self.is_responses = '/responses' in self.url
   
   def get_code(self, text: str, selection: Selection, file: str, indent: int = None) -> str:
     messages = self._build_code_rules(text, selection, file, indent)
@@ -73,15 +80,21 @@ class CopilotGithubApi(CopilotApi):
   
   def __chat_completion(self, messages: list) -> str:
     body = {
-      'messages': messages,
+      'input': messages,
       'model': self.model,
-      'temperature': 0,
-      'n': 1,
     }
-    
-    for message in body['messages']:
-      if message['role'] in ['system', 'user']:
-        message['copilot_cache_control'] = {'type': 'ephemeral'}
+
+    if not self.is_responses:
+      body = {
+        'messages': messages,
+        'model': self.model,
+        'temperature': 0,
+        'n': 1,
+      }
+
+      for message in messages:
+        if message['role'] in ['system', 'user']:
+          message['copilot_cache_control'] = {'type': 'ephemeral'}
     
     text = self._send_request(body)
     result = self.__parse_response(text)
@@ -90,18 +103,31 @@ class CopilotGithubApi(CopilotApi):
     return result
   
   def __parse_response(self, text: str) -> str:
+    result = text
+    
     try:
       data = json.loads(text)
     except json.JSONDecodeError:
       self.logger.error(f'Response JSON parse error')
-      return text
+      return result
+    
+    try:
+      if data.get('output'):
+        texts = []
+        for output in data['output']:
+          if output['type'] != 'message': continue
+          
+          for content in output['content']:
+            if content['type'] != 'output_text': continue
+            texts.append(content['text'])
+        
+        result = ''.join(texts)
 
-    if data.get('choices'):
-      try:
+      elif data.get('choices'):
         result = data['choices'][0]['message']['content']
-      except KeyError as ex:
-        self.logger.error(f'Response parse key error: {ex}')
-        return text
+    
+    except KeyError as ex:
+      self.logger.error(f'Response parse key error: {ex}')
     
     return result
   
